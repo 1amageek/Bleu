@@ -7,6 +7,10 @@ BLE for U🎁
 
 Please customize `Communicable+.swift`.
 
+``` shell
+uuidgen // create uuid
+```
+
 ``` Swift
 extension BLEService {
     
