@@ -12,6 +12,13 @@
 		125FA7CF1E7631B600DC0D62 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 125FA7CD1E7631B600DC0D62 /* Main.storyboard */; };
 		125FA7D11E7631B600DC0D62 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 125FA7D01E7631B600DC0D62 /* Assets.xcassets */; };
 		125FA7D41E7631B600DC0D62 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 125FA7D21E7631B600DC0D62 /* LaunchScreen.storyboard */; };
+		12B359871E76C39600239E75 /* Communicable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12B3597F1E76C39600239E75 /* Communicable.swift */; };
+		12B359881E76C39600239E75 /* Communicable+.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12B359801E76C39600239E75 /* Communicable+.swift */; };
+		12B359891E76C39600239E75 /* Request.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12B359811E76C39600239E75 /* Request.swift */; };
+		12B3598A1E76C39600239E75 /* Receiver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12B359821E76C39600239E75 /* Receiver.swift */; };
+		12B3598B1E76C39600239E75 /* Bleu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12B359831E76C39600239E75 /* Bleu.swift */; };
+		12B3598D1E76C39600239E75 /* Antenna.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12B359851E76C39600239E75 /* Antenna.swift */; };
+		12B3598E1E76C39600239E75 /* Beacon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12B359861E76C39600239E75 /* Beacon.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -22,6 +29,13 @@
 		125FA7D01E7631B600DC0D62 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		125FA7D31E7631B600DC0D62 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		125FA7D51E7631B600DC0D62 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		12B3597F1E76C39600239E75 /* Communicable.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Communicable.swift; sourceTree = "<group>"; };
+		12B359801E76C39600239E75 /* Communicable+.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "Communicable+.swift"; sourceTree = "<group>"; };
+		12B359811E76C39600239E75 /* Request.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Request.swift; sourceTree = "<group>"; };
+		12B359821E76C39600239E75 /* Receiver.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Receiver.swift; sourceTree = "<group>"; };
+		12B359831E76C39600239E75 /* Bleu.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Bleu.swift; sourceTree = "<group>"; };
+		12B359851E76C39600239E75 /* Antenna.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Antenna.swift; sourceTree = "<group>"; };
+		12B359861E76C39600239E75 /* Beacon.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Beacon.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -54,6 +68,13 @@
 		125FA7C81E7631B600DC0D62 /* Bleu */ = {
 			isa = PBXGroup;
 			children = (
+				12B3597F1E76C39600239E75 /* Communicable.swift */,
+				12B359801E76C39600239E75 /* Communicable+.swift */,
+				12B359811E76C39600239E75 /* Request.swift */,
+				12B359821E76C39600239E75 /* Receiver.swift */,
+				12B359831E76C39600239E75 /* Bleu.swift */,
+				12B359851E76C39600239E75 /* Antenna.swift */,
+				12B359861E76C39600239E75 /* Beacon.swift */,
 				125FA7C91E7631B600DC0D62 /* AppDelegate.swift */,
 				125FA7CB1E7631B600DC0D62 /* ViewController.swift */,
 				125FA7CD1E7631B600DC0D62 /* Main.storyboard */,
@@ -98,6 +119,11 @@
 						CreatedOnToolsVersion = 8.3;
 						DevelopmentTeam = 88ACA86N96;
 						ProvisioningStyle = Automatic;
+						SystemCapabilities = {
+							com.apple.BackgroundModes = {
+								enabled = 1;
+							};
+						};
 					};
 				};
 			};
@@ -137,8 +163,15 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				12B3598A1E76C39600239E75 /* Receiver.swift in Sources */,
+				12B359881E76C39600239E75 /* Communicable+.swift in Sources */,
 				125FA7CC1E7631B600DC0D62 /* ViewController.swift in Sources */,
+				12B359891E76C39600239E75 /* Request.swift in Sources */,
 				125FA7CA1E7631B600DC0D62 /* AppDelegate.swift in Sources */,
+				12B359871E76C39600239E75 /* Communicable.swift in Sources */,
+				12B3598E1E76C39600239E75 /* Beacon.swift in Sources */,
+				12B3598D1E76C39600239E75 /* Antenna.swift in Sources */,
+				12B3598B1E76C39600239E75 /* Bleu.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -302,6 +335,7 @@
 				125FA7DA1E7631B600DC0D62 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};

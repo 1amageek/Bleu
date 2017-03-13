@@ -7,6 +7,7 @@
 //
 
 import UIKit
+import CoreBluetooth
 
 class ViewController: UIViewController {
 
@@ -20,6 +21,16 @@ class ViewController: UIViewController {
         // Dispose of any resources that can be recreated.
     }
 
+    @IBAction func action(_ sender: Any) {        
+        let request: Request = Request(item: PostUserIDItem(), allowDuplicates: true, thresholdRSSI: -28, options: nil)
+        request.post = { (peripheral, characteristic) in
+            let data: Data = "userID".data(using: .utf8)!
+            peripheral.writeValue(data, for: characteristic, type: CBCharacteristicWriteType.withResponse)
+        }
+        Bleu.shared.send(request) { (peripheral, characteristic, error) in
+            print("!!!", peripheral)
+        }
+    }
 
 }
 
