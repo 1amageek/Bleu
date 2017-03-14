@@ -23,35 +23,28 @@ public class Beacon: NSObject, CBPeripheralManagerDelegate {
     
     static let ReceiveWriteCBATTRequestKey: AnyHashable = "antenna.beacon.receive.CBATTRequest.key"
     
-    // MARK: - public
+    // MARK: Public
     
+    /// localName for Advertising
     public var localName: String?
     
+    /// serviceData for Advertising
     public var serviceData: Data?
     
+    /// Whether or not the peripheral is currently advertising data.
     public var isAdvertising: Bool {
         return self.peripheralManager.isAdvertising
     }
     
+    /// This method does not prompt the user for access. You can use it to detect restricted access and simply hide UI instead of prompting for access.
     public var authorizationStatus: CBPeripheralManagerAuthorizationStatus {
         return CBPeripheralManager.authorizationStatus()
     }
     
-    public var didReceiveReadBlock: ((CBPeripheralManager, CBATTRequest) -> Void)?
-    
-    @available(iOS 10.0, *)
+    /// Represents the current state of a CBManager.
     public var state: CBManagerState {
         return self.peripheralManager.state
     }
-    
-    public var poweredOffBlock: (() -> Void)?
-    
-    override init() {
-        super.init()
-        _ = self.peripheralManager
-    }
-    
-    // MARK: - private
     
     private let queue: DispatchQueue = DispatchQueue(label: "antenna.beacon.queue", attributes: [], target: nil)
     
@@ -68,6 +61,11 @@ public class Beacon: NSObject, CBPeripheralManagerDelegate {
                                                                          options: options)
         return peripheralManager
     }()
+    
+    override init() {
+        super.init()
+        _ = self.peripheralManager
+    }
     
     // MARK: - functions
     
@@ -107,9 +105,9 @@ public class Beacon: NSObject, CBPeripheralManagerDelegate {
         }    
         
         // Set service data
-//        if let serviceData: Data = self.serviceData {
-//            advertisementData[CBAdvertisementDataServiceDataKey] = serviceData
-//        }
+        if let serviceData: Data = self.serviceData {
+            advertisementData[CBAdvertisementDataServiceDataKey] = serviceData
+        }
         
         startAdvertising(advertisementData)
     }
@@ -202,9 +200,4 @@ public class Beacon: NSObject, CBPeripheralManagerDelegate {
         self.delegate?.post(peripheralManager: peripheral, requests: requests)
     }
     
-}
-
-extension NSNotification.Name {
-    static let BeaconDidReceiveReadNotificationKey: NSNotification.Name = NSNotification.Name(rawValue: "antenna.beacon.receive.read.notification.key")
-    static let BeaconDidReceiveWriteNotificationKey: NSNotification.Name = NSNotification.Name(rawValue: "antenna.beacon.receive.write.notification.key")
 }
