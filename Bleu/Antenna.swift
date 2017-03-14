@@ -11,10 +11,8 @@ import UIKit
 import CoreBluetooth
 
 /**
- AntennaはCoreBluetoothを使って任意のサービスを持つPeripheralを見つけ出します。
- PeripheralControllerを有し、見つけたPeripheralの制御をします。
+ AntennaはCBCentralManagerを制御します。
  */
-
 
 public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     

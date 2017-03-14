@@ -9,6 +9,11 @@
 import Foundation
 import CoreBluetooth
 
+/**
+ BleuはCoreBluetoothのラッパーです。
+ `Request` `Receiver`を定義することで通信を制御します。
+ */
+
 public class Bleu: BLEService {
     
     static var shared: Bleu = Bleu()

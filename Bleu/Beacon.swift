@@ -9,6 +9,10 @@
 import Foundation
 import CoreBluetooth
 
+/**
+ BeaconはCBPeripheralManagerを制御します。
+ */
+
 public class Beacon: NSObject, CBPeripheralManagerDelegate {
     
     weak var delegate: BleuServerDelegate?
