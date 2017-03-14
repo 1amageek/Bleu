@@ -15,6 +15,8 @@ public class Receiver: Communicable {
     
     public typealias ReceivePostHandler = ((CBPeripheralManager, [CBATTRequest]) -> Void)
     
+    public typealias ReceiveNotifyHandler = ((CBPeripheralManager, CBCentral, CBCharacteristic) -> Void)
+    
     public let method: RequestMethod
     
     public let characteristicUUID: CBUUID
@@ -25,12 +27,22 @@ public class Receiver: Communicable {
     
     public var post: ReceivePostHandler?
     
-    public init<T: Communicable>(item: T, get: ReceiveGetHandler? = nil, post: ReceivePostHandler? = nil) {
+    public var subscribe: ReceiveNotifyHandler?
+    
+    public var unsubscribe: ReceiveNotifyHandler?
+    
+    public init<T: Communicable>(item: T,
+                get: ReceiveGetHandler? = nil,
+                post: ReceivePostHandler? = nil,
+                subscribe: ReceiveNotifyHandler? = nil,
+                unsubscribe: ReceiveNotifyHandler? = nil) {
         self.method = item.method
         self.characteristicUUID = item.characteristicUUID
         self.characteristic = item.characteristic
         self.get = get
         self.post = post
+        self.subscribe = subscribe
+        self.unsubscribe = unsubscribe
     }
     
 }

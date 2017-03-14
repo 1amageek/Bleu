@@ -17,7 +17,7 @@ extension BLEService {
     
 }
 
-struct GetUserIDItem: Communicable {
+struct GetUserID: Communicable {
     
     public var method: RequestMethod {
         return .get
@@ -29,7 +29,7 @@ struct GetUserIDItem: Communicable {
     
 }
 
-struct PostUserIDItem: Communicable {
+struct PostUserID: Communicable {
     
     public var method: RequestMethod {
         return .post

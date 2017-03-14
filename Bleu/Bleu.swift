@@ -21,8 +21,10 @@ public class Bleu: BLEService {
     enum BleuError: Error {
         case invalidGetRequest
         case invalidPostRequest
+        case invalidNotifyRequest
         case invalidGetReceiver
         case invalidPostReceiver
+        case invalidNotifyReceiver
     }
     
     var service: CBMutableService {
@@ -89,10 +91,6 @@ public class Bleu: BLEService {
         }
     }
     
-    fileprivate func removeRequest(_ request: Request) {
-        self.requests.remove(request)
-    }
-    
     private func validateRequest(_ request: Request) throws {
         switch request.method{
         case .get:
@@ -104,9 +102,18 @@ public class Bleu: BLEService {
                 throw BleuError.invalidPostRequest
             }
         case .notify:
-            // TODO: Notify
-            break
+            guard let _: Request.RequestHandler = request.notify else {
+                throw BleuError.invalidNotifyRequest
+            }
         }
+    }
+    
+    public class func removeRequest(_ request: Request) {
+        shared.requests.remove(request)
+    }
+    
+    public class func removeAllRequests() {
+        shared.requests = []
     }
     
     // MARK: - Receiver
@@ -126,13 +133,11 @@ public class Bleu: BLEService {
             Swift.print("*** Error: When RequestMethod is `get`, it must have get receiver ")
         } catch BleuError.invalidPostReceiver {
             Swift.print("*** Error: When RequestMethod is `post`, it must have post receiver ")
+        } catch BleuError.invalidNotifyReceiver {
+            Swift.print("*** Error: When RequestMethod is `notify`, it must have post receiver ")
         } catch {
             
         }
-    }
-    
-    public func removeRecevier(_ receiver: Receiver) {
-        self.receivers.remove(receiver)
     }
     
     private func validateReceiver(_ receiver: Receiver) throws {
@@ -146,9 +151,21 @@ public class Bleu: BLEService {
                 throw BleuError.invalidPostReceiver
             }
         case .notify:
-            // TODO: Notify
-            break
+            guard let _: Receiver.ReceiveNotifyHandler = receiver.subscribe else {
+                throw BleuError.invalidNotifyReceiver
+            }
+            guard let _: Receiver.ReceiveNotifyHandler = receiver.unsubscribe else {
+                throw BleuError.invalidNotifyReceiver
+            }
         }
+    }
+    
+    public class func removeReceiver(_ receiver: Receiver) {
+        shared.receivers.remove(receiver)
+    }
+    
+    public class func removeAllReceivers() {
+        shared.receivers = []
     }
     
 }
@@ -159,6 +176,7 @@ protocol BleuClientDelegate: class {
     var characteristicUUIDs: [CBUUID] { get }
     func get(peripheral: CBPeripheral, characteristic: CBCharacteristic)
     func post(peripheral: CBPeripheral, characteristic: CBCharacteristic)
+    func notify(peripheral: CBPeripheral, characteristic: CBCharacteristic)
     func receiveResponse(peripheral: CBPeripheral, characteristic: CBCharacteristic, error: Error?)
 }
 
@@ -168,6 +186,8 @@ protocol BleuServerDelegate: class {
     var characteristicUUIDs: [CBUUID] { get }
     func get(peripheralManager: CBPeripheralManager, request: CBATTRequest)
     func post(peripheralManager: CBPeripheralManager, requests: [CBATTRequest])
+    func subscribe(peripheralManager: CBPeripheralManager, central: CBCentral, characteristic: CBCharacteristic)
+    func unsubscribe(peripheralManager: CBPeripheralManager, central: CBCentral, characteristic: CBCharacteristic)
 }
 
 extension Bleu: BleuClientDelegate {
@@ -175,7 +195,9 @@ extension Bleu: BleuClientDelegate {
     func get(peripheral: CBPeripheral, characteristic: CBCharacteristic) {
         self.requests.forEach { (request) in
             if request.characteristicUUID == characteristic.uuid {
-                request.get!(peripheral, characteristic)
+                DispatchQueue.main.async {
+                    request.get!(peripheral, characteristic)
+                }
             }
         }
     }
@@ -183,9 +205,20 @@ extension Bleu: BleuClientDelegate {
     func post(peripheral: CBPeripheral, characteristic: CBCharacteristic) {
         self.requests.forEach { (request) in
             if request.characteristicUUID == characteristic.uuid {
-                request.post!(peripheral, characteristic)
+                DispatchQueue.main.async {
+                    request.post!(peripheral, characteristic)
+                }
             }
-            
+        }
+    }
+    
+    func notify(peripheral: CBPeripheral, characteristic: CBCharacteristic) {
+        self.requests.forEach { (request) in
+            if request.characteristicUUID == characteristic.uuid {
+                DispatchQueue.main.async {
+                    request.post!(peripheral, characteristic)
+                }
+            }            
         }
     }
     
@@ -193,9 +226,11 @@ extension Bleu: BleuClientDelegate {
         self.requests.forEach { (request) in
             if request.characteristicUUID == characteristic.uuid {
                 if let handler = request.response {
-                    handler(peripheral, characteristic, error)
+                    DispatchQueue.main.async {
+                        handler(peripheral, characteristic, error)
+                    }                    
                 }
-                self.removeRequest(request)
+                Bleu.removeRequest(request)
             }
         }
     }
@@ -207,7 +242,9 @@ extension Bleu: BleuServerDelegate {
     func get(peripheralManager: CBPeripheralManager, request: CBATTRequest) {
         self.receivers.forEach { (receiver) in
             if receiver.characteristicUUID == receiver.characteristic.uuid {
-                receiver.get?(peripheralManager, request)
+                DispatchQueue.main.async {
+                    receiver.get?(peripheralManager, request)
+                }
             }
         }
     }
@@ -215,10 +252,31 @@ extension Bleu: BleuServerDelegate {
     func post(peripheralManager: CBPeripheralManager, requests: [CBATTRequest]) {
         self.receivers.forEach { (receiver) in
             if receiver.characteristicUUID == receiver.characteristic.uuid {
-                receiver.post?(peripheralManager, requests)
+                DispatchQueue.main.async {
+                    receiver.post?(peripheralManager, requests)
+                }
             }
         }
     }
 
+    func subscribe(peripheralManager: CBPeripheralManager, central: CBCentral, characteristic: CBCharacteristic) {
+        self.receivers.forEach { (receiver) in
+            if receiver.characteristicUUID == receiver.characteristic.uuid {
+                DispatchQueue.main.async {
+                    receiver.subscribe?(peripheralManager, central, characteristic)
+                }
+            }
+        }
+    }
+    
+    func unsubscribe(peripheralManager: CBPeripheralManager, central: CBCentral, characteristic: CBCharacteristic) {
+        self.receivers.forEach { (receiver) in
+            if receiver.characteristicUUID == receiver.characteristic.uuid {
+                DispatchQueue.main.async {
+                    receiver.unsubscribe?(peripheralManager, central, characteristic)
+                }
+            }
+        }
+    }
 }
 

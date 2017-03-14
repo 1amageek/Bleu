@@ -255,6 +255,10 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
                     debugPrint("[Bleu Antenna] characteristic properties write")
                     self.delegate?.post(peripheral: peripheral, characteristic: characteristic)
                 }
+                if properties.contains(.notify) {
+                    debugPrint("[Bleu Antenna] characteristic properties notify")
+                    self.delegate?.notify(peripheral: peripheral, characteristic: characteristic)
+                }
             }
         }
     }

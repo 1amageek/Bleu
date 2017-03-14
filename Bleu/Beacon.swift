@@ -184,10 +184,12 @@ public class Beacon: NSObject, CBPeripheralManagerDelegate {
     
     public func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral, didSubscribeTo characteristic: CBCharacteristic) {
         debugPrint("[Bleu Beacon] did subscribe to ", peripheral, central, characteristic)
+        self.delegate?.subscribe(peripheralManager: peripheral, central: central, characteristic: characteristic)
     }
     
     public func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral, didUnsubscribeFrom characteristic: CBCharacteristic) {
         debugPrint("[Bleu Beacon] did unsubscribe from ", peripheral, central, characteristic)
+        self.delegate?.unsubscribe(peripheralManager: peripheral, central: central, characteristic: characteristic)
     }
     
     public func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveRead request: CBATTRequest) {

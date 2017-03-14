@@ -22,7 +22,7 @@ class ViewController: UIViewController {
     }
 
     @IBAction func action(_ sender: Any) {        
-        let request: Request = Request(item: PostUserIDItem(), allowDuplicates: true, thresholdRSSI: -28, options: nil)
+        let request: Request = Request(item: PostUserID(), allowDuplicates: true, thresholdRSSI: -28, options: nil)
         request.post = { (peripheral, characteristic) in
             let data: Data = "userID".data(using: .utf8)!
             peripheral.writeValue(data, for: characteristic, type: CBCharacteristicWriteType.withResponse)
