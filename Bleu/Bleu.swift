@@ -78,6 +78,10 @@ public class Bleu: BLEService {
                               options: nil)
     }
     
+    public class func cancelRequests() {
+        shared.client.stopScan(cleaned: true)
+    }
+    
     private func addRequest(_ request: Request) {
         do {
             try validateRequest(request)
@@ -241,7 +245,7 @@ extension Bleu: BleuServerDelegate {
     
     func get(peripheralManager: CBPeripheralManager, request: CBATTRequest) {
         self.receivers.forEach { (receiver) in
-            if receiver.characteristicUUID == receiver.characteristic.uuid {
+            if receiver.characteristicUUID == request.characteristic.uuid {
                 DispatchQueue.main.async {
                     receiver.get?(peripheralManager, request)
                 }
@@ -251,11 +255,13 @@ extension Bleu: BleuServerDelegate {
     
     func post(peripheralManager: CBPeripheralManager, requests: [CBATTRequest]) {
         self.receivers.forEach { (receiver) in
-            if receiver.characteristicUUID == receiver.characteristic.uuid {
-                DispatchQueue.main.async {
-                    receiver.post?(peripheralManager, requests)
+            requests.forEach({ (request) in
+                if receiver.characteristicUUID == request.characteristic.uuid {
+                    DispatchQueue.main.async {
+                        receiver.post?(peripheralManager, request)
+                    }
                 }
-            }
+            })
         }
     }
 

@@ -13,7 +13,7 @@ public class Receiver: Communicable {
     
     public typealias ReceiveGetHandler = ((CBPeripheralManager, CBATTRequest) -> Void)
     
-    public typealias ReceivePostHandler = ((CBPeripheralManager, [CBATTRequest]) -> Void)
+    public typealias ReceivePostHandler = ((CBPeripheralManager, CBATTRequest) -> Void)
     
     public typealias ReceiveNotifyHandler = ((CBPeripheralManager, CBCentral, CBCharacteristic) -> Void)
     
@@ -31,7 +31,7 @@ public class Receiver: Communicable {
     
     public var unsubscribe: ReceiveNotifyHandler?
     
-    public init<T: Communicable>(item: T,
+    public init<T: Communicable>(_ item: T,
                 get: ReceiveGetHandler? = nil,
                 post: ReceivePostHandler? = nil,
                 subscribe: ReceiveNotifyHandler? = nil,

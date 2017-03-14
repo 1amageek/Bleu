@@ -153,9 +153,62 @@
                     <view key="view" contentMode="scaleToFill" id="khY-Hl-KcH">
                         <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <subviews>
+                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Central" textAlignment="natural" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="cqk-4y-H7f">
+                                <rect key="frame" x="159" y="102" width="56" height="21"/>
+                                <fontDescription key="fontDescription" type="system" pointSize="17"/>
+                                <nil key="textColor"/>
+                                <nil key="highlightedColor"/>
+                            </label>
+                            <textField opaque="NO" clipsSubviews="YES" contentMode="scaleToFill" contentHorizontalAlignment="left" contentVerticalAlignment="center" borderStyle="roundedRect" textAlignment="natural" minimumFontSize="17" translatesAutoresizingMaskIntoConstraints="NO" id="PeT-Df-fMB">
+                                <rect key="frame" x="16" y="143" width="343" height="30"/>
+                                <nil key="textColor"/>
+                                <fontDescription key="fontDescription" type="system" pointSize="14"/>
+                                <textInputTraits key="textInputTraits"/>
+                            </textField>
+                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Peripheral" textAlignment="natural" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="PUR-8O-sjd">
+                                <rect key="frame" x="148" y="203" width="78" height="21"/>
+                                <fontDescription key="fontDescription" type="system" pointSize="17"/>
+                                <nil key="textColor"/>
+                                <nil key="highlightedColor"/>
+                            </label>
+                            <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="roundedRect" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="kth-KD-tGZ">
+                                <rect key="frame" x="32" y="294" width="311" height="30"/>
+                                <state key="normal" title="Post"/>
+                                <connections>
+                                    <action selector="get:" destination="Uxz-D0-czZ" eventType="touchUpInside" id="hCn-EU-ruw"/>
+                                    <action selector="post:" destination="5fn-H8-hNV" eventType="touchUpInside" id="qqH-la-wM3"/>
+                                </connections>
+                            </button>
+                            <textField opaque="NO" clipsSubviews="YES" contentMode="scaleToFill" contentHorizontalAlignment="left" contentVerticalAlignment="center" borderStyle="roundedRect" textAlignment="natural" minimumFontSize="17" translatesAutoresizingMaskIntoConstraints="NO" id="BZk-Td-cmB">
+                                <rect key="frame" x="16" y="244" width="343" height="30"/>
+                                <nil key="textColor"/>
+                                <fontDescription key="fontDescription" type="system" pointSize="14"/>
+                                <textInputTraits key="textInputTraits"/>
+                            </textField>
+                        </subviews>
                         <color key="backgroundColor" white="1" alpha="1" colorSpace="calibratedWhite"/>
+                        <constraints>
+                            <constraint firstItem="kth-KD-tGZ" firstAttribute="leading" secondItem="khY-Hl-KcH" secondAttribute="leadingMargin" constant="16" id="383-gU-xaa"/>
+                            <constraint firstItem="PUR-8O-sjd" firstAttribute="centerX" secondItem="khY-Hl-KcH" secondAttribute="centerX" id="4S7-yQ-HLu"/>
+                            <constraint firstItem="PeT-Df-fMB" firstAttribute="trailing" secondItem="khY-Hl-KcH" secondAttribute="trailingMargin" id="6LC-c5-H8b"/>
+                            <constraint firstItem="PUR-8O-sjd" firstAttribute="top" secondItem="PeT-Df-fMB" secondAttribute="bottom" constant="30" id="CsX-zV-1IH"/>
+                            <constraint firstItem="PeT-Df-fMB" firstAttribute="leading" secondItem="khY-Hl-KcH" secondAttribute="leadingMargin" id="Dbf-z3-zZM"/>
+                            <constraint firstItem="BZk-Td-cmB" firstAttribute="trailing" secondItem="khY-Hl-KcH" secondAttribute="trailingMargin" id="HOd-K8-3Cl"/>
+                            <constraint firstItem="cqk-4y-H7f" firstAttribute="top" secondItem="hVC-oG-bmt" secondAttribute="bottom" constant="38" id="LuQ-1i-D51"/>
+                            <constraint firstAttribute="trailingMargin" secondItem="kth-KD-tGZ" secondAttribute="trailing" constant="16" id="RGT-PD-azZ"/>
+                            <constraint firstItem="cqk-4y-H7f" firstAttribute="centerX" secondItem="khY-Hl-KcH" secondAttribute="centerX" id="Y1d-aF-pjm"/>
+                            <constraint firstItem="BZk-Td-cmB" firstAttribute="leading" secondItem="khY-Hl-KcH" secondAttribute="leadingMargin" id="cb7-9U-MNq"/>
+                            <constraint firstItem="BZk-Td-cmB" firstAttribute="top" secondItem="PUR-8O-sjd" secondAttribute="bottom" constant="20" id="kBb-Kx-l0p"/>
+                            <constraint firstItem="kth-KD-tGZ" firstAttribute="top" secondItem="BZk-Td-cmB" secondAttribute="bottom" constant="20" id="s2Z-1g-V1Q"/>
+                            <constraint firstItem="PeT-Df-fMB" firstAttribute="top" secondItem="cqk-4y-H7f" secondAttribute="bottom" constant="20" id="yfi-Dg-Pwp"/>
+                        </constraints>
                     </view>
                     <navigationItem key="navigationItem" id="Cuo-WB-sSd"/>
+                    <connections>
+                        <outlet property="centralTextField" destination="PeT-Df-fMB" id="sRa-aR-hXi"/>
+                        <outlet property="peripheralTextField" destination="BZk-Td-cmB" id="fK4-mq-sDw"/>
+                    </connections>
                 </viewController>
                 <placeholder placeholderIdentifier="IBFirstResponder" id="USy-eL-BcG" userLabel="First Responder" sceneMemberID="firstResponder"/>
             </objects>

@@ -16,8 +16,8 @@ class GetViewController: UIViewController {
         Bleu.removeAllRequests()
         Bleu.removeAllReceivers()
         
-        Bleu.addRecevier(Receiver(item: GetUserID(), get: { (manager, request) in            
-            guard let text: String = self.peripheralTextField.text else {
+        Bleu.addRecevier(Receiver(GetUserID(), get: { [weak self] (manager, request) in
+            guard let text: String = self?.peripheralTextField.text else {
                 manager.respond(to: request, withResult: .attributeNotFound)
                 return
             }
@@ -26,7 +26,12 @@ class GetViewController: UIViewController {
         }))
         
         Bleu.startAdvertising()
-
+    }
+    
+    deinit {
+        print("deinit get ViewController")
+        Bleu.stopAdvertising()
+        Bleu.cancelRequests()
     }
 
     override func didReceiveMemoryWarning() {
@@ -43,7 +48,7 @@ class GetViewController: UIViewController {
         request.get = { (peripheral, characteristic) in
             peripheral.readValue(for: characteristic)
         }
-        Bleu.send(request) { (peripheral, characteristic, error) in
+        Bleu.send(request) { [weak self] (peripheral, characteristic, error) in
             
             if let error = error {
                 debugPrint(error)
@@ -53,7 +58,7 @@ class GetViewController: UIViewController {
             let data: Data = characteristic.value!
             let text: String = String(data: data, encoding: .utf8)!
             
-            self.centralTextField.text = text
+            self?.centralTextField.text = text
         }
         
     }
