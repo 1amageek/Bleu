@@ -47,23 +47,31 @@ public class Bleu: BLEService {
         server.delegate = self
     }
     
-    // MARK: -
+    // MARK: - Advertising
     
-    public func startAdvertising() {
-        server.startAdvertising()
+    public class var isAdvertising: Bool {
+        return shared.server.isAdvertising
+    }
+    
+    public class func startAdvertising() {
+        shared.server.startAdvertising()
+    }
+    
+    public class func stopAdvertising() {
+        shared.server.stopAdvertising()
     }
     
     // MARK: - Request
     
-    public func send(_ request: Request, block: ((CBPeripheral, CBCharacteristic, Error?) -> Void)?) {
+    public class func send(_ request: Request, block: ((CBPeripheral, CBCharacteristic, Error?) -> Void)?) {
         request.response = block
-        self.addRequest(request)
-        self.client.startScan(thresholdRSSI: request.thresholdRSSI,
+        shared.addRequest(request)
+        shared.client.startScan(thresholdRSSI: request.thresholdRSSI,
                               allowDuplicates: request.allowDuplicates,
                               options: nil)
     }
     
-    public func addRequest(_ request: Request) {
+    private func addRequest(_ request: Request) {
         do {
             try validateRequest(request)
             self.requests.insert(request)
@@ -76,7 +84,7 @@ public class Bleu: BLEService {
         }
     }
     
-    public func removeRequest(_ request: Request) {
+    fileprivate func removeRequest(_ request: Request) {
         self.requests.remove(request)
     }
     
@@ -98,10 +106,17 @@ public class Bleu: BLEService {
     
     // MARK: - Receiver
     
-    public func addRecevier(_ receiver: Receiver) {
+    public class func addRecevier(_ receiver: Receiver) {
         do {
-            try validateReceiver(receiver)
-            self.receivers.insert(receiver)
+            try shared.validateReceiver(receiver)
+            let isAdvertising = Bleu.isAdvertising
+            if isAdvertising {
+                Bleu.stopAdvertising()
+            }
+            shared.receivers.insert(receiver)
+            if isAdvertising {
+                Bleu.startAdvertising()
+            }
         } catch BleuError.invalidGetReceiver {
             Swift.print("*** Error: When RequestMethod is `get`, it must have get receiver ")
         } catch BleuError.invalidPostReceiver {
@@ -175,6 +190,7 @@ extension Bleu: BleuClientDelegate {
                 if let handler = request.response {
                     handler(peripheral, characteristic, error)
                 }
+                self.removeRequest(request)
             }
         }
     }

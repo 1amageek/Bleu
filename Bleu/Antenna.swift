@@ -20,20 +20,6 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     
     weak var delegate: BleuClientDelegate?
     
-    // read
-    public var readValueBlock: ((CBPeripheral, CBCharacteristic) -> Void)?
-    
-    public var didUpdateValueBlock: ((CBPeripheral, CBCharacteristic, Error?) -> Void)?
-    
-    // write
-    public var writeValueBlock: ((CBPeripheral, CBCharacteristic) -> Void)?
-    
-    public var changeConnectedPeripheralsBlock: ((Set<CBPeripheral>) -> Void)?
-    
-    public var changeConnectedDevicesBlock: ((Set<Device>) -> Void)?
-    
-    public var createDeviceBlock: ((_ peripheral: CBPeripheral, _ characteristic: CBCharacteristic) -> Device?)?
-    
     private let restoreIdentifierKey = "antenna.antenna.restore.key"
     
     private lazy var centralManager: CBCentralManager = {
@@ -49,26 +35,10 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     private(set) var discoveredPeripherals: Set<CBPeripheral> = []
     
     /// Connected peripherals
-    private(set) var connectedPeripherals: Set<CBPeripheral> = [] {
-        didSet {
-            DispatchQueue.main.async {
-                self.changeConnectedPeripheralsBlock?(self.connectedPeripherals)
-            }
-        }
-    }
+    private(set) var connectedPeripherals: Set<CBPeripheral> = []
     
-    @available(iOS 10.0, *)
     var status: CBManagerState {
         return self.centralManager.state
-    }
-    
-    /// Connected devices
-    var connectedDevices: Set<Device> = [] {
-        didSet {
-            DispatchQueue.main.async {
-                self.changeConnectedDevicesBlock?(self.connectedDevices)
-            }
-        }
     }
     
     private var thresholdRSSI: NSNumber?
@@ -136,13 +106,13 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             if status == .poweredOn {
                 if !isScanning {
                     self.centralManager.scanForPeripherals(withServices: [serviceUUID], options: self.scanOptions)
-                    debugPrint("[Antenna Antenna] start scan.")
+                    debugPrint("[Bleu Antenna] start scan.")
                 }
             } else {
                 self.startScanBlock = { [unowned self] (options) in
                     if !self.isScanning {
                         self.centralManager.scanForPeripherals(withServices: [serviceUUID], options: self.scanOptions)
-                        debugPrint("[Antenna Antenna] start scan.")
+                        debugPrint("[Bleu Antenna] start scan.")
                     }
                 }
             }
@@ -150,7 +120,7 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             self.startScanBlock = { [unowned self] (options) in
                 if !self.isScanning {
                     self.centralManager.scanForPeripherals(withServices: [serviceUUID], options: self.scanOptions)
-                    debugPrint("[Antenna Antenna] start scan.")
+                    debugPrint("[Bleu Antenna] start scan.")
                 }
             }
         }
@@ -179,7 +149,7 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     func stopScan(cleaned: Bool) {
         self.timeoutWorkItem?.cancel()
         self.centralManager.stopScan()
-        debugPrint("[Antenna Antenna] Stop scan.")
+        debugPrint("[Bleu Antenna] Stop scan.")
         if cleaned {
             cleanup()
         }
@@ -189,14 +159,8 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     func cleanup() {
         self.discoveredPeripherals = []
         self.connectedPeripherals = []
-        self.connectedDevices = []
-        self.readValueBlock = nil
-        self.writeValueBlock = nil
-        self.changeConnectedPeripheralsBlock = nil
-        self.changeConnectedDevicesBlock = nil
         self.thresholdRSSI = nil
         self.scanOptions = nil
-        self.didUpdateValueBlock = nil
     }
     
     // MARK: - CBCentralManagerDelegate
@@ -221,7 +185,7 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             self.centralManager.connect(peripheral, options: nil)
         }
         
-        debugPrint("[Antenna Antenna] discover peripheral. ", peripheral, RSSI)
+        debugPrint("[Bleu Antenna] discover peripheral. ", peripheral, RSSI)
         
     }
     
@@ -232,16 +196,16 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         peripheral.delegate = self
         peripheral.discoverServices([serviceUUID])
         self.connectedPeripherals.insert(peripheral)
-        debugPrint("[Antenna Antenna] donnect peripheral. ", peripheral)
+        debugPrint("[Bleu Antenna] donnect peripheral. ", peripheral)
     }
     
     public func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
-        debugPrint("[Antenna Antenna] fail to connect peripheral. ", peripheral, error ?? "")
+        debugPrint("[Bleu Antenna] fail to connect peripheral. ", peripheral, error ?? "")
         self.connectedPeripherals.remove(peripheral)
     }
     
     public func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
-        debugPrint("[Antenna Antenna] did disconnect peripheral. ", peripheral, error ?? "")
+        debugPrint("[Bleu Antenna] did disconnect peripheral. ", peripheral, error ?? "")
         self.connectedPeripherals.remove(peripheral)
     }
     
@@ -253,11 +217,11 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     // MARK: - CBPeripheralDelegate
     
     public func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
-        debugPrint("[Antenna Antenna] did discover service. peripheral", peripheral, error ?? "")
+        debugPrint("[Bleu Antenna] did discover service. peripheral", peripheral, error ?? "")
         guard let services: [CBService] = peripheral.services else {
             return
         }
-        debugPrint("[Antenna Antenna] did discover service. services", services)
+        debugPrint("[Bleu Antenna] did discover service. services", services)
         guard let characteristicUUIDs: [CBUUID] = self.delegate?.characteristicUUIDs else {
             return
         }
@@ -267,7 +231,7 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     }
     
     public func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
-        debugPrint("[Antenna Antenna] did discover characteristics for service. ", peripheral, error ?? "")
+        debugPrint("[Bleu Antenna] did discover characteristics for service. ", peripheral, error ?? "")
         for characteristic in service.characteristics! {
             
             guard let characteristicUUIDs: [CBUUID] = self.delegate?.characteristicUUIDs else {
@@ -276,43 +240,40 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             
             if characteristicUUIDs.contains(characteristic.uuid) {
                 let properties: CBCharacteristicProperties = characteristic.properties
-                debugPrint("[Antenna Antenna] characteristic properties. ", properties)
+                debugPrint("[Bleu Antenna] characteristic properties. ", properties)
                 if properties.contains(.read) {
                     self.delegate?.get(peripheral: peripheral, characteristic: characteristic)
-//                    self.readValueBlock?(peripheral, characteristic)
                 }
                 if properties.contains(.write) {
                     self.delegate?.post(peripheral: peripheral, characteristic: characteristic)
-//                    self.writeValueBlock?(peripheral, characteristic)
                 }
             }
         }
     }
     
     public func peripheralDidUpdateName(_ peripheral: CBPeripheral) {
-        debugPrint("[Antenna Antenna] update name ", peripheral)
+        debugPrint("[Bleu Antenna] update name ", peripheral)
     }
     
     public func peripheral(_ peripheral: CBPeripheral, didReadRSSI RSSI: NSNumber, error: Error?) {
-        debugPrint("[Antenna Antenna] did read RSSI ", RSSI)
+        debugPrint("[Bleu Antenna] did read RSSI ", RSSI)
     }
     
     public func peripheral(_ peripheral: CBPeripheral, didDiscoverDescriptorsFor characteristic: CBCharacteristic, error: Error?) {
-        debugPrint("[Antenna Antenna] did discover descriptors for ", peripheral, characteristic)
+        debugPrint("[Bleu Antenna] did discover descriptors for ", peripheral, characteristic)
     }
     
     public func peripheral(_ peripheral: CBPeripheral, didDiscoverIncludedServicesFor service: CBService, error: Error?) {
-        debugPrint("[Antenna Antenna] did discover included services for ", peripheral, service)
+        debugPrint("[Bleu Antenna] did discover included services for ", peripheral, service)
     }
     
     public func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
-        debugPrint("[Antenna Antenna] did update notification state for ", peripheral, characteristic)
+        debugPrint("[Bleu Antenna] did update notification state for ", peripheral, characteristic)
     }
     
     public func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
-        debugPrint("[Antenna Antenna] did update value for ", peripheral, characteristic)
+        debugPrint("[Bleu Antenna] did update value for ", peripheral, characteristic)
         self.delegate?.receiveResponse(peripheral: peripheral, characteristic: characteristic, error: error)
-//        didUpdateValueBlock?(peripheral, characteristic, error)
     }
     
     // MARK: -
@@ -320,28 +281,6 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     internal func _debug() {
         debugPrint("discoveredPeripherals", self.discoveredPeripherals)
         debugPrint("connectedPeripherals ", self.connectedPeripherals)
-        debugPrint("connectedDevices ", self.connectedDevices)
     }
     
-    // MARK: - Device
-    
-    public class Device: Hashable {
-        var peripheral: CBPeripheral
-        var id: String
-        init(id: String, peripheral: CBPeripheral) {
-            self.id = id
-            self.peripheral = peripheral
-        }
-    }
-    
-}
-
-extension Antenna.Device {
-    public var hashValue: Int {
-        return self.id.hash
-    }
-}
-
-public func ==<T: Antenna.Device>(lhs: T, rhs: T) -> Bool {
-    return lhs.id == rhs.id
 }

@@ -122,9 +122,9 @@ public class Beacon: NSObject, CBPeripheralManagerDelegate {
             self.startAdvertisingBlock = { [unowned self] (advertisementData) in
                 if !self.isAdvertising {
                     self.peripheralManager.startAdvertising(advertisementData)
-                    debugPrint("[Antenna Beacon] Start advertising", advertisementData ?? [:])
+                    debugPrint("[Bleu Beacon] Start advertising", advertisementData ?? [:])
                 } else {
-                    debugPrint("[Antenna Beacon] Beacon has already advertising.")
+                    debugPrint("[Bleu Beacon] Beacon has already advertising.")
                 }
             }
             if self.canStartAdvertising {
@@ -143,33 +143,33 @@ public class Beacon: NSObject, CBPeripheralManagerDelegate {
     public func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
         switch peripheral.state {
         case .poweredOn:
-            debugPrint("[Antenna Beacon] did update status POWERD ON")
+            debugPrint("[Bleu Beacon] did update status POWERD ON")
             setup()
         case .poweredOff:
-            debugPrint("[Antenna Beacon] did update status POWERD OFF")
+            debugPrint("[Bleu Beacon] did update status POWERD OFF")
         case .resetting:
-            debugPrint("[Antenna Beacon] did update status RESETTING")
+            debugPrint("[Bleu Beacon] did update status RESETTING")
         case .unauthorized:
-            debugPrint("[Antenna Beacon] did update status UNAUTHORIZED")
+            debugPrint("[Bleu Beacon] did update status UNAUTHORIZED")
         case .unknown:
-            debugPrint("[Antenna Beacon] did update status UNKNOWN")
+            debugPrint("[Bleu Beacon] did update status UNKNOWN")
         case .unsupported:
-            debugPrint("[Antenna Beacon] did update status UNSUPPORTED")
+            debugPrint("[Bleu Beacon] did update status UNSUPPORTED")
         }
     }
     
     public func peripheralManager(_ peripheral: CBPeripheralManager, didAdd service: CBService, error: Error?) {
-        debugPrint("[Antenna Beacon] did add service service", service, error ?? "")
+        debugPrint("[Bleu Beacon] did add service service", service, error ?? "")
         self.canStartAdvertising = true
         self.startAdvertisingBlock?(self.advertisementData)
     }
     
     public func peripheralManagerDidStartAdvertising(_ peripheral: CBPeripheralManager, error: Error?) {
-        debugPrint("[Antenna Beacon] did start advertising", peripheral, error ?? "")
+        debugPrint("[Bleu Beacon] did start advertising", peripheral, error ?? "")
     }
     
     public func peripheralManager(_ peripheral: CBPeripheralManager, willRestoreState dict: [String : Any]) {
-        debugPrint("[Antenna Beacon] will restore state ", dict)
+        debugPrint("[Bleu Beacon] will restore state ", dict)
         
 //        let a = dict[CBPeripheralManagerRestoredStateServicesKey]
 //        let b = dict[CBPeripheralManagerRestoredStateAdvertisementDataKey]
@@ -177,38 +177,25 @@ public class Beacon: NSObject, CBPeripheralManagerDelegate {
     }
     
     public func peripheralManagerIsReady(toUpdateSubscribers peripheral: CBPeripheralManager) {
-        debugPrint("[Antenna Beacon] is ready to update subscribers ", peripheral)
+        debugPrint("[Bleu Beacon] is ready to update subscribers ", peripheral)
     }
     
     public func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral, didSubscribeTo characteristic: CBCharacteristic) {
-        debugPrint("[Antenna Beacon] did subscribe to ", peripheral, central, characteristic)
+        debugPrint("[Bleu Beacon] did subscribe to ", peripheral, central, characteristic)
     }
     
     public func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral, didUnsubscribeFrom characteristic: CBCharacteristic) {
-        debugPrint("[Antenna Beacon] did unsubscribe from ", peripheral, central, characteristic)
+        debugPrint("[Bleu Beacon] did unsubscribe from ", peripheral, central, characteristic)
     }
     
     public func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveRead request: CBATTRequest) {
-        debugPrint("[Antenna Beacon] did receive read ", peripheral, request)
-//        self.didReceiveReadBlock?(peripheral, request)
+        debugPrint("[Bleu Beacon] did receive read ", peripheral, request)
         self.delegate?.get(peripheralManager: peripheral, request: request)
     }
     
     public func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {
-        debugPrint("[Antenna Beacon] did receive write", peripheral, requests)
+        debugPrint("[Bleu Beacon] did receive write", peripheral, requests)
         self.delegate?.post(peripheralManager: peripheral, requests: requests)
-//        for request: CBATTRequest in requests {
-//            guard let data: Data = request.value else {
-//                return
-//            }
-//            DispatchQueue.main.async {
-//                NotificationCenter.default.post(name: .BeaconDidReceiveWriteNotificationKey, object: nil, userInfo: [
-//                    Beacon.ReceiveWritePeripheralKey: peripheral,
-//                    Beacon.ReceiveWriteCBATTRequestKey: request,
-//                    Beacon.ReceiveWriteDataKey: data
-//                    ])
-//            }
-//        }
     }
     
 }

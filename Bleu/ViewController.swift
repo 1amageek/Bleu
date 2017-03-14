@@ -27,10 +27,9 @@ class ViewController: UIViewController {
             let data: Data = "userID".data(using: .utf8)!
             peripheral.writeValue(data, for: characteristic, type: CBCharacteristicWriteType.withResponse)
         }
-        Bleu.shared.send(request) { (peripheral, characteristic, error) in
+        Bleu.send(request) { (peripheral, characteristic, error) in
             print("!!!", peripheral)
         }
     }
 
 }
-

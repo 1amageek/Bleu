@@ -17,12 +17,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplicationLaunchOptionsKey: Any]?) -> Bool {
 
-        Bleu.shared.addRecevier(Receiver(item: GetUserIDItem(), get: { (manager, request) in
+        Bleu.addRecevier(Receiver(item: GetUserIDItem(), get: { (manager, request) in
             request.value = "wwwwwwww".data(using: .utf8)
             manager.respond(to: request, withResult: .success)
         }))
         
-        Bleu.shared.addRecevier(Receiver(item: PostUserIDItem(), post: { (manager, requests) in
+        Bleu.addRecevier(Receiver(item: PostUserIDItem(), post: { (manager, requests) in
             for request: CBATTRequest in requests {
                 guard let data: Data = request.value else {
                     return
@@ -31,10 +31,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 print(www)
             }
         }))
-        Bleu.shared.startAdvertising()
+        Bleu.startAdvertising()
         
         return true
     }
 
 }
-
