@@ -102,19 +102,10 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             self.scanOptions = options
         }
         
-        if #available(iOS 10.0, *) {
-            if status == .poweredOn {
-                if !isScanning {
-                    self.centralManager.scanForPeripherals(withServices: [serviceUUID], options: self.scanOptions)
-                    debugPrint("[Bleu Antenna] start scan.")
-                }
-            } else {
-                self.startScanBlock = { [unowned self] (options) in
-                    if !self.isScanning {
-                        self.centralManager.scanForPeripherals(withServices: [serviceUUID], options: self.scanOptions)
-                        debugPrint("[Bleu Antenna] start scan.")
-                    }
-                }
+        if status == .poweredOn {
+            if !isScanning {
+                self.centralManager.scanForPeripherals(withServices: [serviceUUID], options: self.scanOptions)
+                debugPrint("[Bleu Antenna] start scan.")
             }
         } else {
             self.startScanBlock = { [unowned self] (options) in
@@ -125,7 +116,7 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             }
         }
         
-        let workItem: DispatchWorkItem = DispatchWorkItem { 
+        let workItem: DispatchWorkItem = DispatchWorkItem {
             if self.centralManager.isScanning {
                 self.stopScan(cleaned: false)
             }
@@ -213,8 +204,8 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         //let peripherals: [CBPeripheral] = dict[CBAdvertisementDataLocalNameKey]
     }
     
-    
-    // MARK: - CBPeripheralDelegate
+    // MARK: -
+    // MARK: Serivce
     
     public func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         debugPrint("[Bleu Antenna] did discover service. peripheral", peripheral, error ?? "")
@@ -230,6 +221,24 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         }
     }
     
+    public func peripheralDidUpdateName(_ peripheral: CBPeripheral) {
+        debugPrint("[Bleu Antenna] update name ", peripheral)
+    }
+    
+    public func peripheral(_ peripheral: CBPeripheral, didModifyServices invalidatedServices: [CBService]) {
+        debugPrint("[Bleu Antenna] didModifyServices ", peripheral, invalidatedServices)
+    }
+    
+    public func peripheral(_ peripheral: CBPeripheral, didDiscoverIncludedServicesFor service: CBService, error: Error?) {
+        debugPrint("[Bleu Antenna] did discover included services for ", peripheral, service)
+    }
+    
+    public func peripheral(_ peripheral: CBPeripheral, didReadRSSI RSSI: NSNumber, error: Error?) {
+        debugPrint("[Bleu Antenna] did read RSSI ", RSSI)
+    }
+    
+    // MARK: Characteristic
+    
     public func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
         debugPrint("[Bleu Antenna] did discover characteristics for service. ", peripheral, error ?? "")
         for characteristic in service.characteristics! {
@@ -240,41 +249,47 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             
             if characteristicUUIDs.contains(characteristic.uuid) {
                 let properties: CBCharacteristicProperties = characteristic.properties
-                debugPrint("[Bleu Antenna] characteristic properties. ", properties)
                 if properties.contains(.read) {
+                    debugPrint("[Bleu Antenna] characteristic properties read")
                     self.delegate?.get(peripheral: peripheral, characteristic: characteristic)
                 }
                 if properties.contains(.write) {
+                    debugPrint("[Bleu Antenna] characteristic properties write")
                     self.delegate?.post(peripheral: peripheral, characteristic: characteristic)
                 }
             }
         }
     }
     
-    public func peripheralDidUpdateName(_ peripheral: CBPeripheral) {
-        debugPrint("[Bleu Antenna] update name ", peripheral)
+    public func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+        debugPrint("[Bleu Antenna] did update value for characteristic", peripheral, characteristic)
+        self.delegate?.receiveResponse(peripheral: peripheral, characteristic: characteristic, error: error)
     }
     
-    public func peripheral(_ peripheral: CBPeripheral, didReadRSSI RSSI: NSNumber, error: Error?) {
-        debugPrint("[Bleu Antenna] did read RSSI ", RSSI)
+    public func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
+        debugPrint("[Bleu Antenna] did write value for characteristic", peripheral, characteristic)
+        self.delegate?.receiveResponse(peripheral: peripheral, characteristic: characteristic, error: error)
     }
+    
+    public func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
+        debugPrint("[Bleu Antenna] did update notification state for characteristic", peripheral, characteristic)
+        self.delegate?.receiveResponse(peripheral: peripheral, characteristic: characteristic, error: error)
+    }
+    
+    // MARK: Descriptor
     
     public func peripheral(_ peripheral: CBPeripheral, didDiscoverDescriptorsFor characteristic: CBCharacteristic, error: Error?) {
         debugPrint("[Bleu Antenna] did discover descriptors for ", peripheral, characteristic)
     }
     
-    public func peripheral(_ peripheral: CBPeripheral, didDiscoverIncludedServicesFor service: CBService, error: Error?) {
-        debugPrint("[Bleu Antenna] did discover included services for ", peripheral, service)
+    public func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor descriptor: CBDescriptor, error: Error?) {
+        debugPrint("[Bleu Antenna] did update value for descriptor", peripheral, descriptor)
     }
     
-    public func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
-        debugPrint("[Bleu Antenna] did update notification state for ", peripheral, characteristic)
+    public func peripheral(_ peripheral: CBPeripheral, didWriteValueFor descriptor: CBDescriptor, error: Error?) {
+        debugPrint("[Bleu Antenna] did write value for descriptor", peripheral, descriptor)
     }
-    
-    public func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
-        debugPrint("[Bleu Antenna] did update value for ", peripheral, characteristic)
-        self.delegate?.receiveResponse(peripheral: peripheral, characteristic: characteristic, error: error)
-    }
+
     
     // MARK: -
     
