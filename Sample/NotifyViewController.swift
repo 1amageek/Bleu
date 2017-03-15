@@ -47,9 +47,6 @@ class NotifyViewController: UIViewController {
     @IBAction func notify(_ sender: Any) {
         
         let request: Request = Request(item: NotifyUserID())
-        request.get = { (peripheral, characteristic) in
-            peripheral.readValue(for: characteristic)
-        }
         Bleu.send(request) { (peripheral, characteristic, error) in
             
             if let error = error {

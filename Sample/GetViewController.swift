@@ -45,9 +45,6 @@ class GetViewController: UIViewController {
     @IBAction func get(_ sender: Any) {
         
         let request: Request = Request(item: GetUserID())
-        request.get = { (peripheral, characteristic) in
-            peripheral.readValue(for: characteristic)
-        }
         Bleu.send(request) { [weak self] (peripheral, characteristic, error) in
             
             if let error = error {

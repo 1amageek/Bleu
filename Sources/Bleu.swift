@@ -83,30 +83,7 @@ public class Bleu: BLEService {
     }
     
     private func addRequest(_ request: Request) {
-        do {
-            try validateRequest(request)
-            self.requests.insert(request)
-        } catch BleuError.invalidGetRequest {
-            Swift.print("*** Error: When RequestMethod is `get`, it must have get request ")
-        } catch BleuError.invalidPostRequest {
-            Swift.print("*** Error: When RequestMethod is `post`, it must have post request ")
-        } catch {
-            
-        }
-    }
-    
-    private func validateRequest(_ request: Request) throws {
-        switch request.method {
-        case .get:
-            guard let _: Request.RequestHandler = request.get else {
-                throw BleuError.invalidGetRequest
-            }
-        case .post:
-            guard let _: Request.RequestHandler = request.post else {
-                throw BleuError.invalidPostRequest
-            }
-        case .broadcast: break
-        }
+        self.requests.insert(request)
     }
     
     public class func removeRequest(_ request: Request) {
@@ -203,9 +180,7 @@ extension Bleu: BleuClientDelegate {
     func get(peripheral: CBPeripheral, characteristic: CBCharacteristic) {
         self.requests.forEach { (request) in
             if request.characteristicUUID == characteristic.uuid {
-                DispatchQueue.main.async {
-                    request.get!(peripheral, characteristic)
-                }
+                peripheral.readValue(for: characteristic)
             }
         }
     }
@@ -213,9 +188,10 @@ extension Bleu: BleuClientDelegate {
     func post(peripheral: CBPeripheral, characteristic: CBCharacteristic) {
         self.requests.forEach { (request) in
             if request.characteristicUUID == characteristic.uuid {
-                DispatchQueue.main.async {
-                    request.post!(peripheral, characteristic)
+                guard let data: Data = request.value else {
+                    return
                 }
+                peripheral.writeValue(data, for: characteristic, type: .withResponse)            
             }
         }
     }

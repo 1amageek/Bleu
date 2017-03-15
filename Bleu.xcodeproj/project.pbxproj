@@ -106,8 +106,8 @@
 			isa = PBXGroup;
 			children = (
 				12AD07011E7943CF007D5311 /* Communicable+.swift */,
-				12AD07021E7943CF007D5311 /* GetViewController.swift */,
 				12AD06D81E794054007D5311 /* AppDelegate.swift */,
+				12AD07021E7943CF007D5311 /* GetViewController.swift */,
 				12AD07061E7943D6007D5311 /* NotifyViewController.swift */,
 				12AD07071E7943D6007D5311 /* PostViewController.swift */,
 				12AD07001E7943CF007D5311 /* BroadcastViewController.swift */,

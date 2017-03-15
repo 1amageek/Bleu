@@ -21,12 +21,10 @@ class ViewController: UIViewController {
         // Dispose of any resources that can be recreated.
     }
 
-    @IBAction func action(_ sender: Any) {        
+    @IBAction func action(_ sender: Any) {
+        let data: Data = "userID".data(using: .utf8)!
         let request: Request = Request(item: PostUserID(), allowDuplicates: true, thresholdRSSI: -28, options: nil)
-        request.post = { (peripheral, characteristic) in
-            let data: Data = "userID".data(using: .utf8)!
-            peripheral.writeValue(data, for: characteristic, type: CBCharacteristicWriteType.withResponse)
-        }
+        request.value = data
         Bleu.send(request) { (peripheral, characteristic, error) in
             print("!!!", peripheral)
         }

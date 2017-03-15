@@ -27,9 +27,7 @@ public class Request: Communicable {
     
     public var options: [String: Any]?
     
-    public var get: RequestHandler?
-    
-    public var post: RequestHandler?
+    public var value: Data?
     
     public var response: ResponseHandler?
     

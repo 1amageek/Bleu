@@ -42,15 +42,12 @@ class PostViewController: UIViewController {
     @IBOutlet weak var peripheralTextField: UITextField!
 
     @IBAction func post(_ sender: Any) {
-        
-        let request: Request = Request(item: PostUserID())
-        request.post = { [weak self] (peripheral, characteristic) in
-            guard let text: String = self?.centralTextField.text else {
-                return
-            }
-            let data: Data = text.data(using: .utf8)!
-            peripheral.writeValue(data, for: characteristic, type: .withResponse)
+        guard let text: String = self.centralTextField.text else {
+            return
         }
+        let data: Data = text.data(using: .utf8)!
+        let request: Request = Request(item: PostUserID())
+        request.value = data
         Bleu.send(request) { (peripheral, characteristic, error) in
             
             if let error = error {

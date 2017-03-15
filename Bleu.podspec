@@ -10,7 +10,7 @@ Pod::Spec.new do |s|
   s.homepage     = "https://github.com/1amageek/Bleu"
   s.license      = "MIT"
   #s.screenshots     = 'www.example.com/screenshots_1', 'www.example.com/screenshots_2'
-  #s.license      = { :type => "MIT", :file => "FILE_LICENSE" }
+  s.license      = { :type => "MIT", :file => "LICENSE" }
   s.author             = { "1_am_a_geek" => "tmy0x3@icloud.com" }
   s.social_media_url   = "http://twitter.com/1amageek"
   s.platform     = :ios, "10.0"
