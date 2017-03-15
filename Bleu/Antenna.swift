@@ -94,9 +94,12 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             self.scanOptions = options
         } else {
             let options: [String: Any] = [
+                // 連続的にスキャンする
                 CBCentralManagerScanOptionAllowDuplicatesKey: allowDuplicates,
-                CBCentralManagerScanOptionSolicitedServiceUUIDsKey: [serviceUUID]
-                                          ]
+                // サービスを指定する
+                CBCentralManagerScanOptionSolicitedServiceUUIDsKey: [serviceUUID],
+                
+            ]
             self.scanOptions = options
         }
         
@@ -173,9 +176,7 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         } else {
             self.centralManager.connect(peripheral, options: nil)
         }
-        
-        debugPrint("[Bleu Antenna] discover peripheral. ", peripheral, RSSI)
-        
+        debugPrint("[Bleu Antenna] discover peripheral. ", peripheral, RSSI)        
     }
     
     public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {

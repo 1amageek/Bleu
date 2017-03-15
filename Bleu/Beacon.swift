@@ -55,7 +55,11 @@ public class Beacon: NSObject, CBPeripheralManagerDelegate {
     private var startAdvertisingBlock: (([String : Any]?) -> Void)?
     
     private lazy var peripheralManager: CBPeripheralManager = {
-        let options: [String: Any] = [CBPeripheralManagerOptionRestoreIdentifierKey: self.restoreIdentifierKey]
+        let options: [String: Any] = [
+            // OSにストアするIdentifierKeyをセット
+            CBPeripheralManagerOptionRestoreIdentifierKey: self.restoreIdentifierKey,
+            // BluetoothがOffになった時にAlertを出す
+            CBPeripheralManagerOptionShowPowerAlertKey: true]
         let peripheralManager: CBPeripheralManager = CBPeripheralManager(delegate: self,
                                                                          queue: self.queue,
                                                                          options: options)

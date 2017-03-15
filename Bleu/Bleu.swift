@@ -96,7 +96,7 @@ public class Bleu: BLEService {
     }
     
     private func validateRequest(_ request: Request) throws {
-        switch request.method{
+        switch request.method {
         case .get:
             guard let _: Request.RequestHandler = request.get else {
                 throw BleuError.invalidGetRequest
@@ -105,6 +105,7 @@ public class Bleu: BLEService {
             guard let _: Request.RequestHandler = request.post else {
                 throw BleuError.invalidPostRequest
             }
+        case .broadcast: break
         }
     }
     
@@ -158,6 +159,7 @@ public class Bleu: BLEService {
             guard let _: Receiver.ReceivePostHandler = receiver.post else {
                 throw BleuError.invalidPostReceiver
             }
+        case .broadcast: break
         }
     }
     

@@ -52,3 +52,19 @@ struct NotifyUserID: Communicable {
     }
     
 }
+
+struct BroadcastUserID: Communicable {
+    
+    public var method: RequestMethod {
+        return .broadcast
+    }
+    
+    public var characteristicUUID: CBUUID {
+        return CBUUID(string: "DC87206F-3B0B-4D9F-A93F-A72DF3DEC226")
+    }
+    
+    public var characteristic: CBMutableCharacteristic {
+        return CBMutableCharacteristic(type: self.characteristicUUID, properties: self.method.property, value: "hogehoge".data(using: .utf8), permissions: self.method.permission)
+    }
+    
+}

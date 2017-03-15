@@ -15,6 +15,7 @@
 		125FA7CF1E7631B600DC0D62 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 125FA7CD1E7631B600DC0D62 /* Main.storyboard */; };
 		125FA7D11E7631B600DC0D62 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 125FA7D01E7631B600DC0D62 /* Assets.xcassets */; };
 		125FA7D41E7631B600DC0D62 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 125FA7D21E7631B600DC0D62 /* LaunchScreen.storyboard */; };
+		12AD06D11E79230F007D5311 /* BroadcastViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12AD06D01E79230F007D5311 /* BroadcastViewController.swift */; };
 		12B359871E76C39600239E75 /* Communicable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12B3597F1E76C39600239E75 /* Communicable.swift */; };
 		12B359881E76C39600239E75 /* Communicable+.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12B359801E76C39600239E75 /* Communicable+.swift */; };
 		12B359891E76C39600239E75 /* Request.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12B359811E76C39600239E75 /* Request.swift */; };
@@ -35,6 +36,7 @@
 		125FA7D01E7631B600DC0D62 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		125FA7D31E7631B600DC0D62 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		125FA7D51E7631B600DC0D62 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		12AD06D01E79230F007D5311 /* BroadcastViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BroadcastViewController.swift; sourceTree = "<group>"; };
 		12B3597F1E76C39600239E75 /* Communicable.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Communicable.swift; sourceTree = "<group>"; };
 		12B359801E76C39600239E75 /* Communicable+.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "Communicable+.swift"; sourceTree = "<group>"; };
 		12B359811E76C39600239E75 /* Request.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Request.swift; sourceTree = "<group>"; };
@@ -61,6 +63,7 @@
 				122884221E77EDFE005F6E19 /* GetViewController.swift */,
 				122884241E77EE16005F6E19 /* PostViewController.swift */,
 				122884261E77EE25005F6E19 /* NotifyViewController.swift */,
+				12AD06D01E79230F007D5311 /* BroadcastViewController.swift */,
 			);
 			name = Test;
 			sourceTree = "<group>";
@@ -184,6 +187,7 @@
 				122884271E77EE25005F6E19 /* NotifyViewController.swift in Sources */,
 				12B359881E76C39600239E75 /* Communicable+.swift in Sources */,
 				125FA7CC1E7631B600DC0D62 /* ViewController.swift in Sources */,
+				12AD06D11E79230F007D5311 /* BroadcastViewController.swift in Sources */,
 				12B359891E76C39600239E75 /* Request.swift in Sources */,
 				125FA7CA1E7631B600DC0D62 /* AppDelegate.swift in Sources */,
 				12B359871E76C39600239E75 /* Communicable.swift in Sources */,
