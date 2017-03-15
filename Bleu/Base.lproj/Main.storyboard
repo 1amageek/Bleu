@@ -225,9 +225,71 @@
                     <view key="view" contentMode="scaleToFill" id="nTG-95-5Ty">
                         <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <subviews>
+                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Central" textAlignment="natural" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="40U-nr-CLP">
+                                <rect key="frame" x="159" y="84" width="56" height="21"/>
+                                <fontDescription key="fontDescription" type="system" pointSize="17"/>
+                                <nil key="textColor"/>
+                                <nil key="highlightedColor"/>
+                            </label>
+                            <textField opaque="NO" clipsSubviews="YES" contentMode="scaleToFill" contentHorizontalAlignment="left" contentVerticalAlignment="center" borderStyle="roundedRect" textAlignment="natural" minimumFontSize="17" translatesAutoresizingMaskIntoConstraints="NO" id="PQ4-eA-qte">
+                                <rect key="frame" x="16" y="125" width="343" height="30"/>
+                                <nil key="textColor"/>
+                                <fontDescription key="fontDescription" type="system" pointSize="14"/>
+                                <textInputTraits key="textInputTraits"/>
+                            </textField>
+                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Peripheral" textAlignment="natural" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="Gm8-i0-Nd7">
+                                <rect key="frame" x="148" y="185" width="78" height="21"/>
+                                <fontDescription key="fontDescription" type="system" pointSize="17"/>
+                                <nil key="textColor"/>
+                                <nil key="highlightedColor"/>
+                            </label>
+                            <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="roundedRect" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="Qfi-db-5jq">
+                                <rect key="frame" x="32" y="276" width="42" height="30"/>
+                                <state key="normal" title="Notify"/>
+                                <connections>
+                                    <action selector="get:" destination="Uxz-D0-czZ" eventType="touchUpInside" id="36P-3M-0Q0"/>
+                                    <action selector="notify:" destination="hub-Gw-8VJ" eventType="touchUpInside" id="5gK-2k-u4u"/>
+                                    <action selector="post:" destination="5fn-H8-hNV" eventType="touchUpInside" id="cNv-Rw-eEw"/>
+                                </connections>
+                            </button>
+                            <textField opaque="NO" clipsSubviews="YES" contentMode="scaleToFill" contentHorizontalAlignment="left" contentVerticalAlignment="center" borderStyle="roundedRect" textAlignment="natural" minimumFontSize="17" translatesAutoresizingMaskIntoConstraints="NO" id="2bE-xU-bB6">
+                                <rect key="frame" x="16" y="226" width="343" height="30"/>
+                                <nil key="textColor"/>
+                                <fontDescription key="fontDescription" type="system" pointSize="14"/>
+                                <textInputTraits key="textInputTraits"/>
+                            </textField>
+                            <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="roundedRect" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="Tdh-cT-hV1">
+                                <rect key="frame" x="308" y="276" width="51" height="30"/>
+                                <state key="normal" title="Update"/>
+                                <connections>
+                                    <action selector="update:" destination="hub-Gw-8VJ" eventType="touchUpInside" id="ryX-eU-AAm"/>
+                                </connections>
+                            </button>
+                        </subviews>
                         <color key="backgroundColor" white="1" alpha="1" colorSpace="calibratedWhite"/>
+                        <constraints>
+                            <constraint firstItem="Tdh-cT-hV1" firstAttribute="top" secondItem="2bE-xU-bB6" secondAttribute="bottom" constant="20" id="01O-Wq-yew"/>
+                            <constraint firstItem="40U-nr-CLP" firstAttribute="centerX" secondItem="nTG-95-5Ty" secondAttribute="centerX" id="5oy-xW-hjy"/>
+                            <constraint firstItem="PQ4-eA-qte" firstAttribute="top" secondItem="40U-nr-CLP" secondAttribute="bottom" constant="20" id="8pD-Vj-Hs7"/>
+                            <constraint firstItem="PQ4-eA-qte" firstAttribute="trailing" secondItem="nTG-95-5Ty" secondAttribute="trailingMargin" id="DIn-6C-0F4"/>
+                            <constraint firstAttribute="trailing" secondItem="Tdh-cT-hV1" secondAttribute="trailing" constant="16" id="Lhj-7o-c9k"/>
+                            <constraint firstItem="PQ4-eA-qte" firstAttribute="leading" secondItem="nTG-95-5Ty" secondAttribute="leadingMargin" id="PiR-y3-y2b"/>
+                            <constraint firstItem="Qfi-db-5jq" firstAttribute="top" secondItem="2bE-xU-bB6" secondAttribute="bottom" constant="20" id="W8v-aD-fQJ"/>
+                            <constraint firstItem="2bE-xU-bB6" firstAttribute="leading" secondItem="nTG-95-5Ty" secondAttribute="leadingMargin" id="Y9I-1L-tLP"/>
+                            <constraint firstItem="Gm8-i0-Nd7" firstAttribute="top" secondItem="PQ4-eA-qte" secondAttribute="bottom" constant="30" id="ZXW-E1-pyV"/>
+                            <constraint firstItem="Gm8-i0-Nd7" firstAttribute="centerX" secondItem="nTG-95-5Ty" secondAttribute="centerX" id="alk-k0-J0I"/>
+                            <constraint firstItem="2bE-xU-bB6" firstAttribute="top" secondItem="Gm8-i0-Nd7" secondAttribute="bottom" constant="20" id="ats-i9-BaY"/>
+                            <constraint firstItem="Qfi-db-5jq" firstAttribute="leading" secondItem="nTG-95-5Ty" secondAttribute="leadingMargin" constant="16" id="eeE-a9-NIy"/>
+                            <constraint firstItem="40U-nr-CLP" firstAttribute="top" secondItem="pho-Ra-nOd" secondAttribute="bottom" constant="20" id="xDi-x5-7Sp"/>
+                            <constraint firstItem="2bE-xU-bB6" firstAttribute="trailing" secondItem="nTG-95-5Ty" secondAttribute="trailingMargin" id="yta-Sm-8e7"/>
+                        </constraints>
                     </view>
                     <navigationItem key="navigationItem" id="b9m-Hs-tTj"/>
+                    <connections>
+                        <outlet property="centralTextField" destination="PQ4-eA-qte" id="CMT-CE-2kO"/>
+                        <outlet property="peripheralTextField" destination="2bE-xU-bB6" id="QDO-BG-Eny"/>
+                    </connections>
                 </viewController>
                 <placeholder placeholderIdentifier="IBFirstResponder" id="A6z-le-Z2b" userLabel="First Responder" sceneMemberID="firstResponder"/>
             </objects>

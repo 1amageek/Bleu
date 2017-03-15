@@ -15,17 +15,7 @@ class PostViewController: UIViewController {
 
         Bleu.removeAllRequests()
         Bleu.removeAllReceivers()
-        
-//        Bleu.addRecevier(Receiver(GetUserID(), get: { [weak self] (manager, request) in
-//            guard let text: String = self?.peripheralTextField.text else {
-//                manager.respond(to: request, withResult: .attributeNotFound)
-//                return
-//            }
-//            request.value = text.data(using: .utf8)
-//            manager.respond(to: request, withResult: .success)
-//        }))
-        
-
+    
         Bleu.addRecevier(Receiver(PostUserID(), post: { [weak self] (manager, request) in
             let data: Data = request.value!
             let text: String = String(data: data, encoding: .utf8)!
@@ -35,6 +25,13 @@ class PostViewController: UIViewController {
         
         Bleu.startAdvertising()
     }
+    
+    deinit {
+        print("deinit post ViewController")
+        Bleu.stopAdvertising()
+        Bleu.cancelRequests()
+    }
+
 
     override func didReceiveMemoryWarning() {
         super.didReceiveMemoryWarning()

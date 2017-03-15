@@ -38,11 +38,11 @@ public class Receiver: Communicable {
                 unsubscribe: ReceiveNotifyHandler? = nil) {
         self.method = item.method
         self.characteristicUUID = item.characteristicUUID
-        self.characteristic = item.characteristic
         self.get = get
         self.post = post
         self.subscribe = subscribe
         self.unsubscribe = unsubscribe
+        self.characteristic = CBMutableCharacteristic(type: item.characteristicUUID, properties: method.property, value: nil, permissions: method.permission)
     }
     
 }

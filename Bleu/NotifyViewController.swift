@@ -7,29 +7,71 @@
 //
 
 import UIKit
+import CoreBluetooth
 
 class NotifyViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        // Do any additional setup after loading the view.
-    }
+        Bleu.removeAllRequests()
+        Bleu.removeAllReceivers()
+    
+        
+        Bleu.addRecevier(Receiver(NotifyUserID(), get: { [weak self] (manager, request) in
+            guard let text: String = self?.peripheralTextField.text else {
+                manager.respond(to: request, withResult: .attributeNotFound)
+                return
+            }
+            request.value = text.data(using: .utf8)
+            manager.respond(to: request, withResult: .success)
+        }, post: nil, subscribe: { (peripheralManager, central, characteristic) in
+            print("subscribe", characteristic.isNotifying, characteristic)
+            self.characteristic = characteristic as? CBMutableCharacteristic
+        }, unsubscribe: { (peripheralManager, central, characteristic) in
+            print("unsubscribe", characteristic.isNotifying)
+        }))
 
-    override func didReceiveMemoryWarning() {
-        super.didReceiveMemoryWarning()
-        // Dispose of any resources that can be recreated.
+        Bleu.startAdvertising()
     }
     
-
-    /*
-    // MARK: - Navigation
-
-    // In a storyboard-based application, you will often want to do a little preparation before navigation
-    override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
-        // Get the new view controller using segue.destinationViewController.
-        // Pass the selected object to the new view controller.
+    deinit {
+        print("deinit notify ViewController")
+        Bleu.stopAdvertising()
+        Bleu.cancelRequests()
     }
-    */
+    
+    var characteristic: CBMutableCharacteristic?
+    @IBOutlet weak var centralTextField: UITextField!
+    @IBOutlet weak var peripheralTextField: UITextField!
+    @IBAction func notify(_ sender: Any) {
+        
+        let request: Request = Request(item: NotifyUserID())
+        request.get = { (peripheral, characteristic) in
+            peripheral.readValue(for: characteristic)
+        }
+        Bleu.send(request) { (peripheral, characteristic, error) in
+            
+            if let error = error {
+                debugPrint(error)
+                return
+            }
+            
+            guard let data: Data = characteristic.value else {
+                return
+            }
+            self.centralTextField.text = String(data: data, encoding: .utf8)
+            
+        }
+        
+    }
 
+    @IBAction func update(_ sender: Any) {
+        guard let text: String = self.peripheralTextField.text else {
+            return
+        }
+
+        let data: Data = text.data(using: .utf8)!
+        Bleu.updateValue(data, for: self.characteristic!, onSubscribedCentrals: nil)
+    }
 }

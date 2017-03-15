@@ -20,7 +20,7 @@ extension BLEService {
 struct GetUserID: Communicable {
     
     public var method: RequestMethod {
-        return .get
+        return .get(false)
     }
     
     public var characteristicUUID: CBUUID {
@@ -37,6 +37,18 @@ struct PostUserID: Communicable {
     
     public var characteristicUUID: CBUUID {
         return CBUUID(string: "55B59CD5-8B59-4BA8-9050-AA4B2320294F")
+    }
+    
+}
+
+struct NotifyUserID: Communicable {
+    
+    public var method: RequestMethod {
+        return .get(true)
+    }
+    
+    public var characteristicUUID: CBUUID {
+        return CBUUID(string: "282F7AD3-A1AC-4DB3-AE2D-95BB85832375")
     }
     
 }

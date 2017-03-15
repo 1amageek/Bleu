@@ -247,6 +247,10 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             
             if characteristicUUIDs.contains(characteristic.uuid) {
                 let properties: CBCharacteristicProperties = characteristic.properties
+                if properties.contains(.notify) {
+                    debugPrint("[Bleu Antenna] characteristic properties notify")
+                    self.delegate?.notify(peripheral: peripheral, characteristic: characteristic)
+                }
                 if properties.contains(.read) {
                     debugPrint("[Bleu Antenna] characteristic properties read")
                     self.delegate?.get(peripheral: peripheral, characteristic: characteristic)
@@ -254,10 +258,6 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
                 if properties.contains(.write) {
                     debugPrint("[Bleu Antenna] characteristic properties write")
                     self.delegate?.post(peripheral: peripheral, characteristic: characteristic)
-                }
-                if properties.contains(.notify) {
-                    debugPrint("[Bleu Antenna] characteristic properties notify")
-                    self.delegate?.notify(peripheral: peripheral, characteristic: characteristic)
                 }
             }
         }

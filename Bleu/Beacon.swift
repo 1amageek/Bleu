@@ -139,6 +139,9 @@ public class Beacon: NSObject, CBPeripheralManagerDelegate {
         self.peripheralManager.stopAdvertising()
     }
     
+    public func updateValue(_ value: Data, for characteristic: CBMutableCharacteristic, onSubscribedCentrals centrals: [CBCentral]?) -> Bool {
+        return self.peripheralManager.updateValue(value, for: characteristic, onSubscribedCentrals: centrals)
+    }
     
     // MARK: -
     

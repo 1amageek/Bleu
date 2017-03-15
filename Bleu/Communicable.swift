@@ -10,15 +10,15 @@ import Foundation
 import CoreBluetooth
 
 public enum RequestMethod {
-    case get
+    case get(Bool)
     case post
-    case notify
     
     var property: CBCharacteristicProperties {
         switch self {
-        case .get: return .read
+        case .get(let notify):
+            if notify { return [.read, .notify] }
+            return .read
         case .post: return .write
-        case .notify: return .notify
         }
     }
     
@@ -26,7 +26,6 @@ public enum RequestMethod {
         switch self {
         case .get: return .readable
         case .post: return .writeable
-        case .notify: return .writeable
         }
     }
 }

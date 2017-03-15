@@ -31,8 +31,6 @@ public class Request: Communicable {
     
     public var post: RequestHandler?
     
-    public var notify: RequestHandler?
-    
     public var response: ResponseHandler?
     
     public init<T: Communicable>(item: T, allowDuplicates: Bool = false, thresholdRSSI: NSNumber? = nil, options: [String: Any]? = nil) {

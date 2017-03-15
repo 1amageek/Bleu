@@ -105,10 +105,6 @@ public class Bleu: BLEService {
             guard let _: Request.RequestHandler = request.post else {
                 throw BleuError.invalidPostRequest
             }
-        case .notify:
-            guard let _: Request.RequestHandler = request.notify else {
-                throw BleuError.invalidNotifyRequest
-            }
         }
     }
     
@@ -146,20 +142,21 @@ public class Bleu: BLEService {
     
     private func validateReceiver(_ receiver: Receiver) throws {
         switch receiver.method{
-        case .get:
+        case .get(let isNotify):
             guard let _: Receiver.ReceiveGetHandler = receiver.get else {
                 throw BleuError.invalidGetReceiver
+            }
+            if isNotify {
+                guard let _: Receiver.ReceiveNotifyHandler = receiver.subscribe else {
+                    throw BleuError.invalidNotifyReceiver
+                }
+                guard let _: Receiver.ReceiveNotifyHandler = receiver.unsubscribe else {
+                    throw BleuError.invalidNotifyReceiver
+                }
             }
         case .post:
             guard let _: Receiver.ReceivePostHandler = receiver.post else {
                 throw BleuError.invalidPostReceiver
-            }
-        case .notify:
-            guard let _: Receiver.ReceiveNotifyHandler = receiver.subscribe else {
-                throw BleuError.invalidNotifyReceiver
-            }
-            guard let _: Receiver.ReceiveNotifyHandler = receiver.unsubscribe else {
-                throw BleuError.invalidNotifyReceiver
             }
         }
     }
@@ -170,6 +167,11 @@ public class Bleu: BLEService {
     
     public class func removeAllReceivers() {
         shared.receivers = []
+    }
+    
+    @discardableResult
+    public class func updateValue(_ value: Data, for characteristic: CBMutableCharacteristic, onSubscribedCentrals centrals: [CBCentral]?) -> Bool {
+        return shared.server.updateValue(value, for: characteristic, onSubscribedCentrals: centrals)
     }
     
 }
@@ -219,8 +221,9 @@ extension Bleu: BleuClientDelegate {
     func notify(peripheral: CBPeripheral, characteristic: CBCharacteristic) {
         self.requests.forEach { (request) in
             if request.characteristicUUID == characteristic.uuid {
-                DispatchQueue.main.async {
-                    request.post!(peripheral, characteristic)
+                switch request.method {
+                case .get(let isNotify): peripheral.setNotifyValue(isNotify, for: characteristic)
+                default: break
                 }
             }            
         }
@@ -234,7 +237,9 @@ extension Bleu: BleuClientDelegate {
                         handler(peripheral, characteristic, error)
                     }                    
                 }
-                Bleu.removeRequest(request)
+                if !characteristic.isNotifying {
+                    Bleu.removeRequest(request)
+                }                
             }
         }
     }
