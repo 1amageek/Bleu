@@ -27,11 +27,11 @@ public class Bleu: BLEService {
         case invalidNotifyReceiver
     }
     
-    var service: CBMutableService {
+    lazy var service: CBMutableService = {
         let service: CBMutableService = CBMutableService(type: self.serviceUUID, primary: true)
         service.characteristics = self.characteristics
         return service
-    }
+    }()
     
     public let server: Beacon = Beacon()
     
@@ -79,7 +79,7 @@ public class Bleu: BLEService {
     }
     
     public class func cancelRequests() {
-        shared.client.stopScan(cleaned: true)
+        shared.client.stopScan(cleaned: false)
     }
     
     private func addRequest(_ request: Request) {
@@ -91,7 +91,9 @@ public class Bleu: BLEService {
     }
     
     public class func removeAllRequests() {
-        shared.requests = []
+        shared.requests.forEach { (request) in
+            Bleu.removeRequest(request)
+        }
     }
     
     // MARK: - Receiver
@@ -104,17 +106,18 @@ public class Bleu: BLEService {
                 Bleu.stopAdvertising()
             }
             shared.receivers.insert(receiver)
+            shared.service.characteristics = shared.characteristics
             if isAdvertising {
                 Bleu.startAdvertising()
             }
         } catch BleuError.invalidGetReceiver {
-            Swift.print("*** Error: When RequestMethod is `get`, it must have get receiver ")
+            Swift.print("*** Error: When RequestMethod is `get`, it must have get receiver.")
         } catch BleuError.invalidPostReceiver {
-            Swift.print("*** Error: When RequestMethod is `post`, it must have post receiver ")
+            Swift.print("*** Error: When RequestMethod is `post`, it must have post receiver.")
         } catch BleuError.invalidNotifyReceiver {
-            Swift.print("*** Error: When RequestMethod is `notify`, it must have post receiver ")
+            Swift.print("*** Error: When RequestMethod is `notify`, it must have post receiver.")
         } catch {
-            
+            Swift.print("*** Error: Receiver unkown error.")
         }
     }
     
@@ -142,10 +145,13 @@ public class Bleu: BLEService {
     
     public class func removeReceiver(_ receiver: Receiver) {
         shared.receivers.remove(receiver)
+        shared.service.characteristics = shared.characteristics
     }
     
     public class func removeAllReceivers() {
-        shared.receivers = []
+        shared.receivers.forEach { (receiver) in
+            Bleu.removeReceiver(receiver)
+        }
     }
     
     @discardableResult
@@ -216,6 +222,8 @@ extension Bleu: BleuClientDelegate {
                     }                    
                 }
                 if !characteristic.isNotifying {
+                    self.client.cancelPeripheralConnection(peripheral)
+                    self.client.stopScan(cleaned: false)
                     Bleu.removeRequest(request)
                 }                
             }

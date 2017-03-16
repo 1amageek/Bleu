@@ -20,7 +20,7 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     
     private let restoreIdentifierKey = "antenna.antenna.restore.key"
     
-    private lazy var centralManager: CBCentralManager = {
+    private(set) lazy var centralManager: CBCentralManager = {
         let options: [String: Any] = [CBCentralManagerOptionRestoreIdentifierKey: self.restoreIdentifierKey]
         let manager: CBCentralManager = CBCentralManager(delegate: self, queue: self.queue, options: options)
         return manager
@@ -129,16 +129,9 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(20), execute: workItem)
         
     }
-
-    
-    /// Clear and scan
-    func reScan() {
-        self.stopScan(cleaned: true)
-        self.startScan(thresholdRSSI: self.thresholdRSSI, allowDuplicates: self.allowDuplicates, options: self.scanOptions)
-    }
     
     /// Stop scan
-    func stopScan(cleaned: Bool) {
+    public func stopScan(cleaned: Bool) {
         self.timeoutWorkItem?.cancel()
         self.centralManager.stopScan()
         debugPrint("[Bleu Antenna] Stop scan.")
@@ -147,12 +140,17 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         }
     }
     
-    /// cleanup
-    func cleanup() {
+    /// Clean CenteralManager
+    public func cleanup() {
         self.discoveredPeripherals = []
         self.connectedPeripherals = []
         self.thresholdRSSI = nil
         self.scanOptions = nil
+    }
+    
+    /// Cancel peripheral connection
+    public func cancelPeripheralConnection(_ peripheral: CBPeripheral) {
+        self.centralManager.cancelPeripheralConnection(peripheral)
     }
     
     // MARK: - CBCentralManagerDelegate

@@ -94,7 +94,8 @@ public class Beacon: NSObject, CBPeripheralManagerDelegate {
         }
     }
     
-    public func startAdvertising() {        
+    public func startAdvertising() {
+        self.setup()
         var advertisementData: [String: Any] = [:]
         
         // Set serviceUUIDs
@@ -168,13 +169,21 @@ public class Beacon: NSObject, CBPeripheralManagerDelegate {
     }
     
     public func peripheralManager(_ peripheral: CBPeripheralManager, didAdd service: CBService, error: Error?) {
-        debugPrint("[Bleu Beacon] did add service service", service, error ?? "")
+        if let error: Error = error {
+            debugPrint(error)
+            return
+        }
+        debugPrint("[Bleu Beacon] did add service service", service)
         self.canStartAdvertising = true
         self.startAdvertisingBlock?(self.advertisementData)
     }
     
     public func peripheralManagerDidStartAdvertising(_ peripheral: CBPeripheralManager, error: Error?) {
-        debugPrint("[Bleu Beacon] did start advertising", peripheral, error ?? "")
+        if let error: Error = error {
+            debugPrint(error)
+            return
+        }
+        debugPrint("[Bleu Beacon] did start advertising", peripheral, peripheral)
     }
     
     public func peripheralManager(_ peripheral: CBPeripheralManager, willRestoreState dict: [String : Any]) {
