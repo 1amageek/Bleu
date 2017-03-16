@@ -46,35 +46,65 @@ struct PostUserIDItem: Communicable {
 
 ```
 
-#### Advertising
 
+### 😃 Get
+
+#### Peripheral(Server)
 ``` Swift
-Bleu.shared.addRecevier(Receiver(item: GetUserIDItem(), get: { (manager, request) in
-    request.value = "hogehoge".data(using: .utf8)
+Bleu.addRecevier(Receiver(GetUserID(), get: { [weak self] (manager, request) in
+    guard let text: String = self?.textField.text else {
+        manager.respond(to: request, withResult: .attributeNotFound)
+        return
+    }
+    request.value = text.data(using: .utf8)
     manager.respond(to: request, withResult: .success)
 }))
 
-Bleu.shared.addRecevier(Receiver(item: PostUserIDItem(), post: { (manager, requests) in
-    for request: CBATTRequest in requests {
-        guard let data: Data = request.value else {
-            return
-        }
-        let text: String = String(data: data, encoding: .utf8)!
-        print(text)
-    }
-}))
-Bleu.shared.startAdvertising()
+Bleu.startAdvertising()
 ```
 
-#### Scan
-
+#### Central(Client)
 ``` Swift
-let request: Request = Request(item: PostUserIDItem(), allowDuplicates: true, thresholdRSSI: -28, options: nil)
-request.post = { (peripheral, characteristic) in
-    let data: Data = "userID".data(using: .utf8)!
-    peripheral.writeValue(data, for: characteristic, type: CBCharacteristicWriteType.withResponse)
+let request: Request = Request(item: GetUserID())
+Bleu.send(request) { (peripheral, characteristic, error) in
+    
+    if let error = error {
+        debugPrint(error)
+        return
+    }
+    
+    let data: Data = characteristic.value!
+    let text: String = String(data: data, encoding: .utf8)!
+    print(text)
 }
-Bleu.shared.send(request) { (peripheral, characteristic, error) in
-    // DO ANYTHING
+```
+
+### 😃 Post 
+
+#### Peripheral(Server)
+``` Swift
+Bleu.addRecevier(Receiver(PostUserID(), post: { (manager, request) in
+    let data: Data = request.value!
+    let text: String = String(data: data, encoding: .utf8)!
+    print(text)
+    manager.respond(to: request, withResult: .success)
+}))
+
+Bleu.startAdvertising()
+```
+
+#### Central(Client)
+``` Swift
+let data: Data = "sample".data(using: .utf8)!
+let request: Request = Request(item: PostUserID())
+request.value = data
+Bleu.send(request) { (peripheral, characteristic, error) in
+    
+    if let error = error {
+        debugPrint(error)
+        return
+    }
+    
+    print("success")
 }
 ```
