@@ -170,7 +170,7 @@ public class Beacon: NSObject, CBPeripheralManagerDelegate {
     
     public func peripheralManager(_ peripheral: CBPeripheralManager, didAdd service: CBService, error: Error?) {
         if let error: Error = error {
-            debugPrint(error)
+            debugPrint("[Bleu Beacon] did add service error", error)
             return
         }
         debugPrint("[Bleu Beacon] did add service service", service)
@@ -180,7 +180,7 @@ public class Beacon: NSObject, CBPeripheralManagerDelegate {
     
     public func peripheralManagerDidStartAdvertising(_ peripheral: CBPeripheralManager, error: Error?) {
         if let error: Error = error {
-            debugPrint(error)
+            debugPrint("[Bleu Beacon] did start advertising", error)
             return
         }
         debugPrint("[Bleu Beacon] did start advertising", peripheral, peripheral)

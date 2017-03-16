@@ -15,8 +15,12 @@ class BroadcastViewController: UIViewController {
 
         Bleu.removeAllRequests()
         Bleu.removeAllReceivers()
-        
-        Bleu.addRecevier(Receiver(BroadcastUserID()))
+    
+        Bleu.addRecevier(Receiver(BroadcastUserID(), get: { [weak self] (manager, request) in
+
+            request.value = "aaaaaaaaaaaa".data(using: .utf8)
+            manager.respond(to: request, withResult: .success)
+        }))
         
         Bleu.startAdvertising()
     }

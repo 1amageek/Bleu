@@ -12,19 +12,21 @@ import CoreBluetooth
 public enum RequestMethod {
     case get(Bool)
     case post
-    case broadcast
+    case broadcast(Bool)
     
-    var property: CBCharacteristicProperties {
+    var properties: CBCharacteristicProperties {
         switch self {
-        case .get(let notify):
-            if notify { return [.read, .notify] }
+        case .get(let isNotify):
+            if isNotify { return [.read, .notify] }
             return .read
         case .post: return .write
-        case .broadcast: return .broadcast
+        case .broadcast(let isNotify):
+            if isNotify { return [.read, .notify, .broadcast] }
+            return [.read, .broadcast]
         }
     }
     
-    var permission: CBAttributePermissions {
+    var permissions: CBAttributePermissions {
         switch self {
         case .get: return .readable
         case .post: return .writeable
@@ -43,6 +45,8 @@ public protocol Communicable: BLEService, Hashable {
     
     var method: RequestMethod { get }
     
+    var value: Data? { get }
+    
     var characteristicUUID: CBUUID { get }
     
     var characteristic: CBMutableCharacteristic { get }
@@ -51,12 +55,16 @@ public protocol Communicable: BLEService, Hashable {
 
 extension Communicable {
     
+    public var value: Data? {
+        return nil
+    }
+    
     public var hashValue: Int {
         return self.characteristicUUID.hash
     }
     
     public var characteristic: CBMutableCharacteristic {
-        return CBMutableCharacteristic(type: self.characteristicUUID, properties: self.method.property, value: nil, permissions: self.method.permission)
+        return CBMutableCharacteristic(type: self.characteristicUUID, properties: self.method.properties, value: nil, permissions: self.method.permissions)
     }
     
 }

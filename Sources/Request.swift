@@ -37,7 +37,7 @@ public class Request: Communicable {
         self.allowDuplicates = allowDuplicates
         self.thresholdRSSI = thresholdRSSI
         self.options = options
-        self.characteristic = CBMutableCharacteristic(type: item.characteristicUUID, properties: method.property, value: nil, permissions: method.permission)
+        self.characteristic = CBMutableCharacteristic(type: item.characteristicUUID, properties: method.properties, value: item.value, permissions: method.permissions)
     }
     
 }

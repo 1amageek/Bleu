@@ -42,7 +42,7 @@ public class Receiver: Communicable {
         self.post = post
         self.subscribe = subscribe
         self.unsubscribe = unsubscribe
-        self.characteristic = CBMutableCharacteristic(type: item.characteristicUUID, properties: method.property, value: nil, permissions: method.permission)
+        self.characteristic = CBMutableCharacteristic(type: item.characteristicUUID, properties: method.properties, value: nil, permissions: method.permissions)
     }
     
 }
