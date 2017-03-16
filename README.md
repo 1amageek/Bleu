@@ -66,7 +66,7 @@ Bleu.startAdvertising()
 #### Central(Client)
 ``` Swift
 let request: Request = Request(item: GetUserID())
-Bleu.send(request) { [weak self] (peripheral, characteristic, error) in
+Bleu.send(request) { (peripheral, characteristic, error) in
     
     if let error = error {
         debugPrint(error)
@@ -75,8 +75,7 @@ Bleu.send(request) { [weak self] (peripheral, characteristic, error) in
     
     let data: Data = characteristic.value!
     let text: String = String(data: data, encoding: .utf8)!
-    
-    self?.centralTextField.text = text
+    print(text)
 }
 ```
 
@@ -84,7 +83,7 @@ Bleu.send(request) { [weak self] (peripheral, characteristic, error) in
 
 #### Peripheral(Server)
 ``` Swift
-Bleu.addRecevier(Receiver(PostUserID(), post: { [weak self] (manager, request) in
+Bleu.addRecevier(Receiver(PostUserID(), post: { (manager, request) in
     let data: Data = request.value!
     let text: String = String(data: data, encoding: .utf8)!
     print(text)
@@ -107,6 +106,5 @@ Bleu.send(request) { (peripheral, characteristic, error) in
     }
     
     print("success")
-    Bleu.cancelRequests()
 }
 ```
