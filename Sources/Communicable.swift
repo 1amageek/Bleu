@@ -35,19 +35,15 @@ public enum RequestMethod {
     }
 }
 
-public protocol BLEService {
+public protocol Communicable: Hashable {
     
     var serviceUUID: CBUUID { get }
-    
-}
-
-public protocol Communicable: BLEService, Hashable {
     
     var method: RequestMethod { get }
     
     var value: Data? { get }
     
-    var characteristicUUID: CBUUID { get }
+    var characteristicUUID: CBUUID? { get }
     
     var characteristic: CBMutableCharacteristic { get }
     
@@ -55,16 +51,23 @@ public protocol Communicable: BLEService, Hashable {
 
 extension Communicable {
     
+    public var method: RequestMethod {
+        return .get(false)
+    }
+    
     public var value: Data? {
         return nil
     }
     
     public var hashValue: Int {
-        return self.characteristicUUID.hash
+        guard let characteristicUUID: CBUUID = self.characteristicUUID else {
+            fatalError("*** Error: characteristicUUID must be defined for Communicable.")
+        }
+        return characteristicUUID.hash
     }
     
     public var characteristic: CBMutableCharacteristic {
-        return CBMutableCharacteristic(type: self.characteristicUUID, properties: self.method.properties, value: nil, permissions: self.method.permissions)
+        return CBMutableCharacteristic(type: self.characteristicUUID!, properties: self.method.properties, value: nil, permissions: self.method.permissions)
     }
     
 }

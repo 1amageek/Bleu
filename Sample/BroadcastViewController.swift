@@ -16,7 +16,7 @@ class BroadcastViewController: UIViewController {
         Bleu.removeAllRequests()
         Bleu.removeAllReceivers()
     
-        Bleu.addRecevier(Receiver(BroadcastUserID(), get: { [weak self] (manager, request) in
+        Bleu.addRecevier(Receiver(BroadcastUserID(), get: { (manager, request) in
 
             request.value = "aaaaaaaaaaaa".data(using: .utf8)
             manager.respond(to: request, withResult: .success)

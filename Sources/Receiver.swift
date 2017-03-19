@@ -17,9 +17,11 @@ public class Receiver: Communicable {
     
     public typealias ReceiveNotifyHandler = ((CBPeripheralManager, CBCentral, CBCharacteristic) -> Void)
     
+    public let serviceUUID: CBUUID
+    
     public let method: RequestMethod
     
-    public let characteristicUUID: CBUUID
+    public let characteristicUUID: CBUUID?
     
     public let characteristic: CBMutableCharacteristic
     
@@ -36,13 +38,14 @@ public class Receiver: Communicable {
                 post: ReceivePostHandler? = nil,
                 subscribe: ReceiveNotifyHandler? = nil,
                 unsubscribe: ReceiveNotifyHandler? = nil) {
+        self.serviceUUID = item.serviceUUID
         self.method = item.method
         self.characteristicUUID = item.characteristicUUID
         self.get = get
         self.post = post
         self.subscribe = subscribe
         self.unsubscribe = unsubscribe
-        self.characteristic = CBMutableCharacteristic(type: item.characteristicUUID, properties: method.properties, value: nil, permissions: method.permissions)
+        self.characteristic = CBMutableCharacteristic(type: item.characteristicUUID!, properties: method.properties, value: nil, permissions: method.permissions)
     }
     
 }

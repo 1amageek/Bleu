@@ -75,10 +75,10 @@ public class Beacon: NSObject, CBPeripheralManagerDelegate {
     
     private func setup() {
         queue.async { [unowned self] in
-            guard let service: CBMutableService = self.delegate?.service else {
+            guard let services: [CBMutableService] = self.delegate?.services else {
                 return
             }
-            self.services = [service]
+            self.services = services
         }
     }
     
@@ -99,10 +99,10 @@ public class Beacon: NSObject, CBPeripheralManagerDelegate {
         var advertisementData: [String: Any] = [:]
         
         // Set serviceUUIDs
-        guard let serviceUUID: CBUUID = self.delegate?.serviceUUID else {
+        guard let serviceUUIDs: [CBUUID] = self.delegate?.receivers.map({ return $0.serviceUUID }) else {
             return
         }
-        advertisementData[CBAdvertisementDataServiceUUIDsKey] = [serviceUUID]
+        advertisementData[CBAdvertisementDataServiceUUIDsKey] = serviceUUIDs
         
         // Set localName. if beacon have localName
         if let localName: String = self.localName {

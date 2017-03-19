@@ -9,7 +9,7 @@
 import Foundation
 import CoreBluetooth
 
-extension BLEService {
+extension Communicable {
     
     public var serviceUUID: CBUUID {
         return CBUUID(string: "4E6C6189-D06B-4835-8F3B-F5CBC36560FB")
@@ -23,7 +23,7 @@ struct GetUserID: Communicable {
         return .get(false)
     }
     
-    public var characteristicUUID: CBUUID {
+    public var characteristicUUID: CBUUID? {
         return CBUUID(string: "BC9E790A-5682-4B4E-9366-E81BB97107A1")
     }
     
@@ -35,7 +35,7 @@ struct PostUserID: Communicable {
         return .post
     }
     
-    public var characteristicUUID: CBUUID {
+    public var characteristicUUID: CBUUID? {
         return CBUUID(string: "55B59CD5-8B59-4BA8-9050-AA4B2320294F")
     }
     
@@ -47,7 +47,7 @@ struct NotifyUserID: Communicable {
         return .get(true)
     }
     
-    public var characteristicUUID: CBUUID {
+    public var characteristicUUID: CBUUID? {
         return CBUUID(string: "282F7AD3-A1AC-4DB3-AE2D-95BB85832375")
     }
     
@@ -63,7 +63,7 @@ struct BroadcastUserID: Communicable {
         return .broadcast(false)
     }
     
-    public var characteristicUUID: CBUUID {
+    public var characteristicUUID: CBUUID? {
         return CBUUID(string: "DC87206F-3B0B-4D9F-A93F-A72DF3DEC226")
     }
     

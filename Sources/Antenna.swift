@@ -86,7 +86,7 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         self.thresholdRSSI = thresholdRSSI
         self.allowDuplicates = allowDuplicates
         
-        guard let serviceUUID: CBUUID = self.delegate?.serviceUUID else {
+        guard let serviceUUIDs: [CBUUID] = self.delegate?.requests.map({ return $0.serviceUUID }) else {
             return
         }
         
@@ -97,7 +97,7 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
                 // 連続的にスキャンする
                 CBCentralManagerScanOptionAllowDuplicatesKey: allowDuplicates,
                 // サービスを指定する
-                CBCentralManagerScanOptionSolicitedServiceUUIDsKey: [serviceUUID],
+                CBCentralManagerScanOptionSolicitedServiceUUIDsKey: serviceUUIDs,
                 
             ]
             self.scanOptions = options
@@ -105,13 +105,13 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         
         if status == .poweredOn {
             if !isScanning {
-                self.centralManager.scanForPeripherals(withServices: [serviceUUID], options: self.scanOptions)
+                self.centralManager.scanForPeripherals(withServices: serviceUUIDs, options: self.scanOptions)
                 debugPrint("[Bleu Antenna] start scan.")
             }
         } else {
             self.startScanBlock = { [unowned self] (options) in
                 if !self.isScanning {
-                    self.centralManager.scanForPeripherals(withServices: [serviceUUID], options: self.scanOptions)
+                    self.centralManager.scanForPeripherals(withServices: serviceUUIDs, options: self.scanOptions)
                     debugPrint("[Bleu Antenna] start scan.")
                 }
             }
@@ -178,11 +178,11 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     }
     
     public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-        guard let serviceUUID: CBUUID = self.delegate?.serviceUUID else {
+        guard let serviceUUIDs: [CBUUID] = self.delegate?.requests.map({ return $0.serviceUUID }) else {
             return
         }
         peripheral.delegate = self
-        peripheral.discoverServices([serviceUUID])
+        peripheral.discoverServices(serviceUUIDs)
         self.connectedPeripherals.insert(peripheral)
         debugPrint("[Bleu Antenna] donnect peripheral. ", peripheral)
     }
@@ -210,7 +210,7 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             return
         }
         debugPrint("[Bleu Antenna] did discover service. services", services)
-        guard let characteristicUUIDs: [CBUUID] = self.delegate?.characteristicUUIDs else {
+        guard let characteristicUUIDs: [CBUUID] = self.delegate?.requests.map({ return $0.characteristicUUID! }) else {
             return
         }
         for service in services {
@@ -237,10 +237,14 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     // MARK: Characteristic
     
     public func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
-        debugPrint("[Bleu Antenna] did discover characteristics for service. ", peripheral, error ?? "")
+        if let error: Error = error {
+            debugPrint("[Bleu Antenna] did discover characteristics for service. Error", peripheral, error)
+            return
+        }
+        debugPrint("[Bleu Antenna] did discover characteristics for service.", peripheral)
         for characteristic in service.characteristics! {
             
-            guard let characteristicUUIDs: [CBUUID] = self.delegate?.characteristicUUIDs else {
+            guard let characteristicUUIDs: [CBUUID] = self.delegate?.requests.map({ return $0.characteristicUUID! }) else {
                 return
             }
             

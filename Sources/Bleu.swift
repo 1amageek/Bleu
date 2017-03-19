@@ -14,7 +14,7 @@ import CoreBluetooth
  `Request` `Receiver`を定義することで通信を制御します。
  */
 
-public class Bleu: BLEService {
+public class Bleu {
     
     static var shared: Bleu = Bleu()
     
@@ -27,11 +27,7 @@ public class Bleu: BLEService {
         case invalidNotifyReceiver
     }
     
-    lazy var service: CBMutableService = {
-        let service: CBMutableService = CBMutableService(type: self.serviceUUID, primary: true)
-        service.characteristics = self.characteristics
-        return service
-    }()
+    public var services: [CBMutableService] = []
     
     public let server: Beacon = Beacon()
     
@@ -40,15 +36,7 @@ public class Bleu: BLEService {
     private(set) var requests: Set<Request> = []
     
     private(set) var receivers: Set<Receiver> = []
-    
-    var characteristicUUIDs: [CBUUID] {
-        return self.receivers.map({ return $0.characteristicUUID })
-    }
-    
-    var characteristics: [CBMutableCharacteristic] {
-        return self.receivers.map({ return $0.characteristic })
-    }
-    
+        
     public init() {
         client.delegate = self
         server.delegate = self
@@ -68,6 +56,18 @@ public class Bleu: BLEService {
         shared.server.stopAdvertising()
     }
     
+    // MARK: -
+    
+    private class func addService(_ service: CBMutableService) {
+        shared.services.append(service)
+    }
+    
+    private class func removeService(_ service: CBMutableService) {
+        if let index: Int = shared.services.index(of: service) {
+            shared.services.remove(at: index)
+        }
+    }
+
     // MARK: - Request
     
     public class func send(_ request: Request, block: ((CBPeripheral, CBCharacteristic, Error?) -> Void)?) {
@@ -105,8 +105,22 @@ public class Bleu: BLEService {
             if isAdvertising {
                 Bleu.stopAdvertising()
             }
+            
             shared.receivers.insert(receiver)
-            shared.service.characteristics = shared.characteristics
+            
+            let serviceUUIDs: [CBUUID] = shared.services.map({ return $0.uuid })
+            if !serviceUUIDs.contains(receiver.serviceUUID) {
+                let service: CBMutableService = CBMutableService(type: receiver.serviceUUID, primary: true)
+                service.characteristics = []
+                Bleu.addService(service)
+            }
+            
+            shared.services.forEach({ (service) in
+                if service.uuid == receiver.serviceUUID {
+                    service.characteristics?.append(receiver.characteristic)
+                }
+            })
+            
             if isAdvertising {
                 Bleu.startAdvertising()
             }
@@ -145,7 +159,15 @@ public class Bleu: BLEService {
     
     public class func removeReceiver(_ receiver: Receiver) {
         shared.receivers.remove(receiver)
-        shared.service.characteristics = shared.characteristics
+        shared.services.forEach({ (service) in
+            if service.uuid == receiver.serviceUUID {
+                if let index: Int = service.characteristics?.index(where: { (characteristic) -> Bool in
+                    return characteristic.uuid == receiver.characteristicUUID
+                }) {
+                    service.characteristics?.remove(at: index)
+                }
+            }
+        })
     }
     
     public class func removeAllReceivers() {
@@ -162,9 +184,8 @@ public class Bleu: BLEService {
 }
 
 protocol BleuClientDelegate: class {
-    var service: CBMutableService { get }
-    var serviceUUID: CBUUID { get }
-    var characteristicUUIDs: [CBUUID] { get }
+    var services: [CBMutableService] { get }
+    var requests: Set<Request> { get }
     func get(peripheral: CBPeripheral, characteristic: CBCharacteristic)
     func post(peripheral: CBPeripheral, characteristic: CBCharacteristic)
     func notify(peripheral: CBPeripheral, characteristic: CBCharacteristic)
@@ -172,9 +193,8 @@ protocol BleuClientDelegate: class {
 }
 
 protocol BleuServerDelegate: class {
-    var service: CBMutableService { get }
-    var serviceUUID: CBUUID { get }
-    var characteristicUUIDs: [CBUUID] { get }
+    var services: [CBMutableService] { get }
+    var receivers: Set<Receiver> { get }
     func get(peripheralManager: CBPeripheralManager, request: CBATTRequest)
     func post(peripheralManager: CBPeripheralManager, requests: [CBATTRequest])
     func subscribe(peripheralManager: CBPeripheralManager, central: CBCentral, characteristic: CBCharacteristic)

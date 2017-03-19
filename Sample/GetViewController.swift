@@ -24,7 +24,6 @@ class GetViewController: UIViewController {
             request.value = text.data(using: .utf8)
             manager.respond(to: request, withResult: .success)
         }))
-        
         Bleu.startAdvertising()
     }
     
