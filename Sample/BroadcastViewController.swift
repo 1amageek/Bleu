@@ -16,8 +16,7 @@ class BroadcastViewController: UIViewController {
         Bleu.removeAllRequests()
         Bleu.removeAllReceivers()
     
-        Bleu.addRecevier(Receiver(BroadcastUserID(), get: { (manager, request) in
-
+        Bleu.addReceiver(Receiver(communication: BroadcastUserID(), get: { (manager, request) in
             request.value = "aaaaaaaaaaaa".data(using: .utf8)
             manager.respond(to: request, withResult: .success)
         }))
@@ -42,9 +41,7 @@ class BroadcastViewController: UIViewController {
 
     @IBAction func scan(_ sender: Any) {
         
-        let request: Request = Request(item: BroadcastUserID())
-        Bleu.send(request) { (peripheral, characteristic, error) in
-            
+        let request: Request = Request(communication: BroadcastUserID()) { (peripheral, characteristic, error) in
             if let error = error {
                 debugPrint(error)
                 return
@@ -54,9 +51,10 @@ class BroadcastViewController: UIViewController {
                 return
             }
             self.centralTextField.text = String(data: data, encoding: .utf8)
-            
         }
         
-        
+        Bleu.send([request]) {
+            print("timeout")
+        }
     }
 }

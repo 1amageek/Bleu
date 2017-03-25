@@ -70,15 +70,7 @@ public class Bleu {
 
     // MARK: - Request
     
-    public class func send(_ request: Request, block: ((CBPeripheral, CBCharacteristic, Error?) -> Void)?) {
-        request.response = block
-        shared.addRequest(request)
-//        shared.client.startScan(thresholdRSSI: request.thresholdRSSI,
-//                              allowDuplicates: request.allowDuplicates,
-//                              options: nil)
-    }
-    
-    public class func send(_ requests: [Request], options: Antenna.Options?) {
+    public class func send(_ requests: [Request], options: Antenna.Options? = nil, timeout block: (() -> Void)?) {
         requests.forEach { (request) in
             shared.addRequest(request)
         }
@@ -88,7 +80,7 @@ public class Bleu {
         } else {
             scanOptions = Antenna.Options()
         }
-        shared.client.startScan(options: scanOptions)
+        shared.client.startScan(options: scanOptions, timeout: block)
     }
     
     public class func cancelRequests() {

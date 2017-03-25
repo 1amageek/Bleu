@@ -16,7 +16,7 @@ class GetViewController: UIViewController {
         Bleu.removeAllRequests()
         Bleu.removeAllReceivers()
         
-        Bleu.addReceiver(Receiver(GetUserID(), get: { [weak self] (manager, request) in
+        Bleu.addReceiver(Receiver(communication: GetUserID(), get: { [weak self] (manager, request) in
             guard let text: String = self?.peripheralTextField.text else {
                 manager.respond(to: request, withResult: .attributeNotFound)
                 return
@@ -54,7 +54,8 @@ class GetViewController: UIViewController {
             
             self?.centralTextField.text = text
         }
-        Bleu.send([request], options: nil)
-        
+        Bleu.send([request]) { 
+            print("timeout")
+        }
     }
 }

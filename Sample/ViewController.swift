@@ -22,12 +22,7 @@ class ViewController: UIViewController {
     }
 
     @IBAction func action(_ sender: Any) {
-        let data: Data = "userID".data(using: .utf8)!
-        let request: Request = Request(item: PostUserID(), allowDuplicates: true, thresholdRSSI: -28, options: nil)
-        request.value = data
-        Bleu.send(request) { (peripheral, characteristic, error) in
-            print("!!!", peripheral)
-        }
+
     }
 
 }

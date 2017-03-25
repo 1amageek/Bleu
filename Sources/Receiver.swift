@@ -38,14 +38,14 @@ public class Receiver: Communicable {
                 post: ReceivePostHandler? = nil,
                 subscribe: ReceiveNotifyHandler? = nil,
                 unsubscribe: ReceiveNotifyHandler? = nil) {
-        self.serviceUUID = item.serviceUUID
-        self.method = item.method
-        self.characteristicUUID = item.characteristicUUID
+        self.serviceUUID = communication.serviceUUID
+        self.method = communication.method
+        self.characteristicUUID = communication.characteristicUUID
         self.get = get
         self.post = post
         self.subscribe = subscribe
         self.unsubscribe = unsubscribe
-        self.characteristic = CBMutableCharacteristic(type: item.characteristicUUID!,
+        self.characteristic = CBMutableCharacteristic(type: communication.characteristicUUID!,
                                                       properties: method.properties,
                                                       value: nil,
                                                       permissions: method.permissions)

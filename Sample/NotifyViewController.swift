@@ -18,7 +18,7 @@ class NotifyViewController: UIViewController {
         Bleu.removeAllReceivers()
     
         
-        Bleu.addRecevier(Receiver(NotifyUserID(), get: { [weak self] (manager, request) in
+        Bleu.addReceiver(Receiver(communication: NotifyUserID(), get: { [weak self] (manager, request) in
             guard let text: String = self?.peripheralTextField.text else {
                 manager.respond(to: request, withResult: .attributeNotFound)
                 return
@@ -46,9 +46,7 @@ class NotifyViewController: UIViewController {
     @IBOutlet weak var peripheralTextField: UITextField!
     @IBAction func notify(_ sender: Any) {
         
-        let request: Request = Request(item: NotifyUserID())
-        Bleu.send(request) { (peripheral, characteristic, error) in
-            
+        let request: Request = Request(communication: NotifyUserID()) { (peripheral, characteristic, error) in
             if let error = error {
                 debugPrint(error)
                 return
@@ -58,7 +56,9 @@ class NotifyViewController: UIViewController {
                 return
             }
             self.centralTextField.text = String(data: data, encoding: .utf8)
-            
+        }
+        Bleu.send([request]) {
+            print("timeout")
         }
         
     }

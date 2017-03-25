@@ -101,7 +101,7 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     
     /// Start scan
     
-    public func startScan(options: Options) {
+    public func startScan(options: Options, timeout block: (() -> Void)?) {
         guard let serviceUUIDs: [CBUUID] = self.delegate?.requests.map({ return $0.serviceUUID }) else {
             return
         }
@@ -133,57 +133,10 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             }
             if strongSelf.centralManager.isScanning {
                 strongSelf.stopScan(cleaned: true)
+                block?()
             }
         }
     }
-/*
-    public func startScan(thresholdRSSI: NSNumber? = nil, allowDuplicates: Bool = false, options: [String: Any]? = nil) {
-        self.thresholdRSSI = thresholdRSSI
-        self.allowDuplicates = allowDuplicates
-        
-        guard let serviceUUIDs: [CBUUID] = self.delegate?.requests.map({ return $0.serviceUUID }) else {
-            return
-        }
-        
-        if let options: [String: Any] = options {
-            self.scanOptions = options
-        } else {
-            let options: [String: Any] = [
-                // 連続的にスキャンする
-                CBCentralManagerScanOptionAllowDuplicatesKey: allowDuplicates,
-                // サービスを指定する
-                CBCentralManagerScanOptionSolicitedServiceUUIDsKey: serviceUUIDs,
-                
-            ]
-            self.scanOptions = options
-        }
-        
-        if status == .poweredOn {
-            if !isScanning {
-                self.centralManager.scanForPeripherals(withServices: serviceUUIDs, options: self.scanOptions)
-                debugPrint("[Bleu Antenna] start scan.")
-            }
-        } else {
-            self.startScanBlock = { [unowned self] (options) in
-                if !self.isScanning {
-                    self.centralManager.scanForPeripherals(withServices: serviceUUIDs, options: self.scanOptions)
-                    debugPrint("[Bleu Antenna] start scan.")
-                }
-            }
-        }
-        
-        let workItem: DispatchWorkItem = DispatchWorkItem {
-            if self.centralManager.isScanning {
-                self.stopScan(cleaned: false)
-            }
-            self.timeoutWorkItem = nil
-        }
-        
-        self.timeoutWorkItem = workItem
-        let interval: Int = 20
-        DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(interval), execute: workItem)
-        
-    }*/
     
     /// Stop scan
     public func stopScan(cleaned: Bool) {

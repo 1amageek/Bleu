@@ -16,7 +16,7 @@ class PostViewController: UIViewController {
         Bleu.removeAllRequests()
         Bleu.removeAllReceivers()
     
-        Bleu.addRecevier(Receiver(PostUserID(), post: { [weak self] (manager, request) in
+        Bleu.addReceiver(Receiver(communication: PostUserID(), post: { [weak self] (manager, request) in
             let data: Data = request.value!
             let text: String = String(data: data, encoding: .utf8)!
             self?.peripheralTextField.text = text
@@ -46,10 +46,7 @@ class PostViewController: UIViewController {
             return
         }
         let data: Data = text.data(using: .utf8)!
-        let request: Request = Request(item: PostUserID())
-        request.value = data
-        Bleu.send(request) { (peripheral, characteristic, error) in
-            
+        let request: Request = Request(communication: PostUserID()) { (peripheral, characteristic, error) in
             if let error = error {
                 debugPrint(error)
                 return
@@ -57,6 +54,9 @@ class PostViewController: UIViewController {
             
             print("success")
         }
-        
+        request.value = data
+        Bleu.send([request]) {
+            print("timeout")
+        }
     }
 }
