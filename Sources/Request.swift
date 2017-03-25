@@ -19,10 +19,6 @@ public class Request: Communicable {
     
     public let method: RequestMethod
     
-    public let allowDuplicates: Bool
-    
-    public let thresholdRSSI: NSNumber?
-    
     public let characteristicUUID: CBUUID?
     
     public let characteristic: CBMutableCharacteristic
@@ -33,14 +29,15 @@ public class Request: Communicable {
     
     public var response: ResponseHandler?
     
-    public init<T: Communicable>(item: T, allowDuplicates: Bool = false, thresholdRSSI: NSNumber? = nil, options: [String: Any]? = nil) {
-        self.serviceUUID = item.serviceUUID
-        self.method = item.method
-        self.characteristicUUID = item.characteristicUUID
-        self.allowDuplicates = allowDuplicates
-        self.thresholdRSSI = thresholdRSSI
-        self.options = options
-        self.characteristic = CBMutableCharacteristic(type: item.characteristicUUID!, properties: method.properties, value: item.value, permissions: method.permissions)
+    public init<T: Communicable>(communication: T, response: @escaping ResponseHandler) {
+        self.serviceUUID = communication.serviceUUID
+        self.method = communication.method
+        self.response = response
+        self.characteristicUUID = communication.characteristicUUID
+        self.characteristic = CBMutableCharacteristic(type: communication.characteristicUUID!,
+                                                      properties: method.properties,
+                                                      value: communication.value,
+                                                      permissions: method.permissions)
     }
     
 }

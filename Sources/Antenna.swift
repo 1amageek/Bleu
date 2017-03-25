@@ -18,10 +18,10 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     
     weak var delegate: BleuClientDelegate?
     
-    private let restoreIdentifierKey = "antenna.antenna.restore.key"
+    private static let restoreIdentifierKey = "antenna.antenna.restore.key"
     
     private(set) lazy var centralManager: CBCentralManager = {
-        let options: [String: Any] = [CBCentralManagerOptionRestoreIdentifierKey: self.restoreIdentifierKey]
+        let options: [String: Any] = [CBCentralManagerOptionRestoreIdentifierKey: Antenna.restoreIdentifierKey]
         let manager: CBCentralManager = CBCentralManager(delegate: self, queue: self.queue, options: options)
         return manager
     }()
@@ -46,8 +46,6 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     private var scanOptions: [String: Any]?
     
     private var startScanBlock: (([String : Any]?) -> Void)?
-    
-    private var timeoutWorkItem: DispatchWorkItem?
     
     // MARK: -
     
@@ -76,13 +74,70 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
      */
     
     /// Antenna is scanning
-    var isScanning: Bool {
+    public var isScanning: Bool {
         return self.centralManager.isScanning
     }
     
+    public struct Options {
+        public var showPowerAlertKey: Bool = false
+        public var restoreIdentifierKey: String = Antenna.restoreIdentifierKey
+        public var allowDuplicatesKey: Bool = false
+        public var thresholdRSSI: Int = -30         // This value is the distance between the devices is about 20 cm.
+        public var timeout: Int = 10                // This value is the time to stop scanning Default 10s
+        
+        init(showPowerAlertKey: Bool = false,
+             restoreIdentifierKey: String = Antenna.restoreIdentifierKey,
+             allowDuplicatesKey: Bool = false,
+             thresholdRSSI: Int = -30,
+             timeout: Int = 10) {
+            self.showPowerAlertKey = showPowerAlertKey
+            self.restoreIdentifierKey = restoreIdentifierKey
+            self.allowDuplicatesKey = allowDuplicatesKey
+            self.thresholdRSSI = thresholdRSSI
+            self.timeout = timeout
+        }
+        
+    }
+    
     /// Start scan
-
-    func startScan(thresholdRSSI: NSNumber? = nil, allowDuplicates: Bool = false, options: [String: Any]? = nil) {
+    
+    public func startScan(options: Options) {
+        guard let serviceUUIDs: [CBUUID] = self.delegate?.requests.map({ return $0.serviceUUID }) else {
+            return
+        }
+        var scanOptions: [String: Any] = [:]
+        scanOptions[CBCentralManagerScanOptionSolicitedServiceUUIDsKey] = serviceUUIDs
+        scanOptions[CBCentralManagerScanOptionAllowDuplicatesKey] = options.allowDuplicatesKey
+        scanOptions[CBCentralManagerOptionRestoreIdentifierKey] = options.restoreIdentifierKey
+        scanOptions[CBCentralManagerOptionShowPowerAlertKey] = options.showPowerAlertKey
+        
+        self.scanOptions = scanOptions
+        
+        if status == .poweredOn {
+            if !isScanning {
+                self.centralManager.scanForPeripherals(withServices: serviceUUIDs, options: self.scanOptions)
+                debugPrint("[Bleu Antenna] start scan.")
+            }
+        } else {
+            self.startScanBlock = { [unowned self] (options) in
+                if !self.isScanning {
+                    self.centralManager.scanForPeripherals(withServices: serviceUUIDs, options: self.scanOptions)
+                    debugPrint("[Bleu Antenna] start scan.")
+                }
+            }
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(options.timeout)) { [weak self] in
+            guard let strongSelf = self else {
+                return
+            }
+            if strongSelf.centralManager.isScanning {
+                strongSelf.stopScan(cleaned: true)
+            }
+        }
+    }
+/*
+    public func startScan(thresholdRSSI: NSNumber? = nil, allowDuplicates: Bool = false, options: [String: Any]? = nil) {
         self.thresholdRSSI = thresholdRSSI
         self.allowDuplicates = allowDuplicates
         
@@ -125,14 +180,13 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         }
         
         self.timeoutWorkItem = workItem
+        let interval: Int = 20
+        DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(interval), execute: workItem)
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(20), execute: workItem)
-        
-    }
+    }*/
     
     /// Stop scan
     public func stopScan(cleaned: Bool) {
-        self.timeoutWorkItem?.cancel()
         self.centralManager.stopScan()
         debugPrint("[Bleu Antenna] Stop scan.")
         if cleaned {

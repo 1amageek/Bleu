@@ -33,7 +33,7 @@ public class Receiver: Communicable {
     
     public var unsubscribe: ReceiveNotifyHandler?
     
-    public init<T: Communicable>(_ item: T,
+    public init<T: Communicable>(communication: T,
                 get: ReceiveGetHandler? = nil,
                 post: ReceivePostHandler? = nil,
                 subscribe: ReceiveNotifyHandler? = nil,
@@ -45,7 +45,10 @@ public class Receiver: Communicable {
         self.post = post
         self.subscribe = subscribe
         self.unsubscribe = unsubscribe
-        self.characteristic = CBMutableCharacteristic(type: item.characteristicUUID!, properties: method.properties, value: nil, permissions: method.permissions)
+        self.characteristic = CBMutableCharacteristic(type: item.characteristicUUID!,
+                                                      properties: method.properties,
+                                                      value: nil,
+                                                      permissions: method.permissions)
     }
     
 }

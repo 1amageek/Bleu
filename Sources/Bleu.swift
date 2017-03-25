@@ -73,9 +73,22 @@ public class Bleu {
     public class func send(_ request: Request, block: ((CBPeripheral, CBCharacteristic, Error?) -> Void)?) {
         request.response = block
         shared.addRequest(request)
-        shared.client.startScan(thresholdRSSI: request.thresholdRSSI,
-                              allowDuplicates: request.allowDuplicates,
-                              options: nil)
+//        shared.client.startScan(thresholdRSSI: request.thresholdRSSI,
+//                              allowDuplicates: request.allowDuplicates,
+//                              options: nil)
+    }
+    
+    public class func send(_ requests: [Request], options: Antenna.Options?) {
+        requests.forEach { (request) in
+            shared.addRequest(request)
+        }
+        var scanOptions: Antenna.Options
+        if let options: Antenna.Options = options {
+            scanOptions = options
+        } else {
+            scanOptions = Antenna.Options()
+        }
+        shared.client.startScan(options: scanOptions)
     }
     
     public class func cancelRequests() {

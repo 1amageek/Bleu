@@ -16,7 +16,7 @@ class GetViewController: UIViewController {
         Bleu.removeAllRequests()
         Bleu.removeAllReceivers()
         
-        Bleu.addRecevier(Receiver(GetUserID(), get: { [weak self] (manager, request) in
+        Bleu.addReceiver(Receiver(GetUserID(), get: { [weak self] (manager, request) in
             guard let text: String = self?.peripheralTextField.text else {
                 manager.respond(to: request, withResult: .attributeNotFound)
                 return
@@ -43,9 +43,7 @@ class GetViewController: UIViewController {
 
     @IBAction func get(_ sender: Any) {
         
-        let request: Request = Request(item: GetUserID())
-        Bleu.send(request) { [weak self] (peripheral, characteristic, error) in
-            
+        let request: Request = Request(communication: GetUserID()) { [weak self] (peripheral, characteristic, error) in
             if let error = error {
                 debugPrint(error)
                 return
@@ -56,6 +54,7 @@ class GetViewController: UIViewController {
             
             self?.centralTextField.text = text
         }
+        Bleu.send([request], options: nil)
         
     }
 }
