@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		1260BB9E1E7D705000187496 /* Communicable+.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12AD07011E7943CF007D5311 /* Communicable+.swift */; };
+		1264FA331E7FC088005DCC2E /* BeaconViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1264FA321E7FC088005DCC2E /* BeaconViewController.swift */; };
 		12AD06D91E794054007D5311 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12AD06D81E794054007D5311 /* AppDelegate.swift */; };
 		12AD06E01E794054007D5311 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 12AD06DF1E794054007D5311 /* Assets.xcassets */; };
 		12AD06E31E794054007D5311 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 12AD06E11E794054007D5311 /* LaunchScreen.storyboard */; };
@@ -33,6 +34,7 @@
 
 /* Begin PBXFileReference section */
 		125FA7C61E7631B600DC0D62 /* Bleu.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Bleu.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1264FA321E7FC088005DCC2E /* BeaconViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BeaconViewController.swift; sourceTree = "<group>"; };
 		12AD06D61E794054007D5311 /* Sample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Sample.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		12AD06D81E794054007D5311 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		12AD06DF1E794054007D5311 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -111,6 +113,7 @@
 				12AD07061E7943D6007D5311 /* NotifyViewController.swift */,
 				12AD07071E7943D6007D5311 /* PostViewController.swift */,
 				12AD07001E7943CF007D5311 /* BroadcastViewController.swift */,
+				1264FA321E7FC088005DCC2E /* BeaconViewController.swift */,
 				12AD07081E7943D6007D5311 /* ViewController.swift */,
 				12AD06DF1E794054007D5311 /* Assets.xcassets */,
 				12AD070C1E79441E007D5311 /* Main.storyboard */,
@@ -256,6 +259,7 @@
 				12AD07131E794442007D5311 /* Receiver.swift in Sources */,
 				12AD070B1E7943D6007D5311 /* ViewController.swift in Sources */,
 				12AD07101E794442007D5311 /* Beacon.swift in Sources */,
+				1264FA331E7FC088005DCC2E /* BeaconViewController.swift in Sources */,
 				12AD070F1E794442007D5311 /* Antenna.swift in Sources */,
 				12AD06D91E794054007D5311 /* AppDelegate.swift in Sources */,
 				1260BB9E1E7D705000187496 /* Communicable+.swift in Sources */,

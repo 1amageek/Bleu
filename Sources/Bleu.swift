@@ -98,7 +98,7 @@ public class Bleu {
     
     // MARK: - Receiver
     
-    public class func addRecevier(_ receiver: Receiver) {
+    public class func addReceiver(_ receiver: Receiver) {
         do {
             try shared.validateReceiver(receiver)
             let isAdvertising = Bleu.isAdvertising
