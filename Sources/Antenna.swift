@@ -78,6 +78,7 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         return self.centralManager.isScanning
     }
     
+    /// Scan options
     public struct Options {
         public var showPowerAlertKey: Bool = false
         public var restoreIdentifierKey: String = Antenna.restoreIdentifierKey
@@ -99,11 +100,30 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         
     }
     
-    /// Start scan
+    /// Scan session
+    public class Session {
+        
+        public enum State {
+            case scanning
+            case canceled
+            case timeout
+        }
+        
+        public let id: String = UUID().uuidString
+        public var state: State = .scanning
+        public let scanOptions: Options
+        
+        init(scanOptions: Options) {
+            self.scanOptions = scanOptions
+        }
+        
+    }
     
-    public func startScan(options: Options, timeout block: (() -> Void)?) {
+    /// Start scan
+    @discardableResult
+    public func startScan(options: Options, timeout block: (() -> Void)?) -> Session? {
         guard let serviceUUIDs: [CBUUID] = self.delegate?.requests.map({ return $0.serviceUUID }) else {
-            return
+            return nil
         }
         var scanOptions: [String: Any] = [:]
         scanOptions[CBCentralManagerScanOptionSolicitedServiceUUIDsKey] = serviceUUIDs
@@ -127,15 +147,19 @@ public class Antenna: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             }
         }
         
+        let session: Session = Session(scanOptions: options)        
         DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(options.timeout)) { [weak self] in
             guard let strongSelf = self else {
                 return
             }
-            if strongSelf.centralManager.isScanning {
-                strongSelf.stopScan(cleaned: true)
-                block?()
+            if session.state == .scanning {
+                if strongSelf.centralManager.isScanning {
+                    strongSelf.stopScan(cleaned: true)
+                    block?()
+                }
             }
         }
+        return session
     }
     
     /// Stop scan
