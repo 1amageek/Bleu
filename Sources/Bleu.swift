@@ -19,9 +19,6 @@ public class Bleu {
     static var shared: Bleu = Bleu()
     
     enum BleuError: Error {
-        case invalidGetRequest
-        case invalidPostRequest
-        case invalidNotifyRequest
         case invalidGetReceiver
         case invalidPostReceiver
         case invalidNotifyReceiver
@@ -31,14 +28,11 @@ public class Bleu {
     
     public let server: Beacon = Beacon()
     
-    public let client: Antenna = Antenna()
-    
-    private(set) var requests: Set<Request> = []
-    
     private(set) var receivers: Set<Receiver> = []
+    
+    private var radars: Set<Radar> = []
         
     public init() {
-        client.delegate = self
         server.delegate = self
     }
     
@@ -70,37 +64,18 @@ public class Bleu {
 
     // MARK: - Request
     
-    public class func send(_ requests: [Request], options: Antenna.Options? = nil, timeout block: (() -> Void)?) {
-        requests.forEach { (request) in
-            shared.addRequest(request)
+    @discardableResult
+    public class func send(_ requests: [Request], options: Radar.Options = Radar.Options(), completionBlock: (([CBPeripheral: Set<Request>], Error?) -> Void)?) -> Radar? {
+        let radar = Radar(requests: requests, options: options)
+        shared.radars.insert(radar)
+        radar.completionHandler = { [weak radar] (completedRequests, error) in
+            shared.radars.remove(radar!)
+            completionBlock?(completedRequests, error)
         }
-        var scanOptions: Antenna.Options
-        if let options: Antenna.Options = options {
-            scanOptions = options
-        } else {
-            scanOptions = Antenna.Options()
-        }
-        shared.client.startScan(options: scanOptions, timeout: block)
+        radar.resume()
+        return radar
     }
-    
-    public class func cancelRequests() {
-        shared.client.stopScan(cleaned: false)
-    }
-    
-    private func addRequest(_ request: Request) {
-        self.requests.insert(request)
-    }
-    
-    public class func removeRequest(_ request: Request) {
-        shared.requests.remove(request)
-    }
-    
-    public class func removeAllRequests() {
-        shared.requests.forEach { (request) in
-            Bleu.removeRequest(request)
-        }
-    }
-    
+        
     // MARK: - Receiver
     
     public class func addReceiver(_ receiver: Receiver) {
@@ -188,15 +163,6 @@ public class Bleu {
     
 }
 
-protocol BleuClientDelegate: class {
-    var services: [CBMutableService] { get }
-    var requests: Set<Request> { get }
-    func get(peripheral: CBPeripheral, characteristic: CBCharacteristic)
-    func post(peripheral: CBPeripheral, characteristic: CBCharacteristic)
-    func notify(peripheral: CBPeripheral, characteristic: CBCharacteristic)
-    func receiveResponse(peripheral: CBPeripheral, characteristic: CBCharacteristic, error: Error?)
-}
-
 protocol BleuServerDelegate: class {
     var services: [CBMutableService] { get }
     var receivers: Set<Receiver> { get }
@@ -204,57 +170,6 @@ protocol BleuServerDelegate: class {
     func post(peripheralManager: CBPeripheralManager, requests: [CBATTRequest])
     func subscribe(peripheralManager: CBPeripheralManager, central: CBCentral, characteristic: CBCharacteristic)
     func unsubscribe(peripheralManager: CBPeripheralManager, central: CBCentral, characteristic: CBCharacteristic)
-}
-
-extension Bleu: BleuClientDelegate {
-    
-    func get(peripheral: CBPeripheral, characteristic: CBCharacteristic) {
-        self.requests.forEach { (request) in
-            if request.characteristicUUID == characteristic.uuid {
-                peripheral.readValue(for: characteristic)
-            }
-        }
-    }
-    
-    func post(peripheral: CBPeripheral, characteristic: CBCharacteristic) {
-        self.requests.forEach { (request) in
-            if request.characteristicUUID == characteristic.uuid {
-                guard let data: Data = request.value else {
-                    return
-                }
-                peripheral.writeValue(data, for: characteristic, type: .withResponse)            
-            }
-        }
-    }
-    
-    func notify(peripheral: CBPeripheral, characteristic: CBCharacteristic) {
-        self.requests.forEach { (request) in
-            if request.characteristicUUID == characteristic.uuid {
-                switch request.method {
-                case .get(let isNotify): peripheral.setNotifyValue(isNotify, for: characteristic)
-                default: break
-                }
-            }            
-        }
-    }
-    
-    func receiveResponse(peripheral: CBPeripheral, characteristic: CBCharacteristic, error: Error?) {
-        self.requests.forEach { (request) in
-            if request.characteristicUUID == characteristic.uuid {
-                if let handler = request.response {
-                    DispatchQueue.main.async {
-                        handler(peripheral, characteristic, error)
-                    }                    
-                }
-                if !characteristic.isNotifying {
-                    self.client.cancelPeripheralConnection(peripheral)
-                    self.client.stopScan(cleaned: false)
-                    Bleu.removeRequest(request)
-                }                
-            }
-        }
-    }
-    
 }
 
 extension Bleu: BleuServerDelegate {

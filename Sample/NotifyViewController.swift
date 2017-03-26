@@ -14,9 +14,7 @@ class NotifyViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        Bleu.removeAllRequests()
         Bleu.removeAllReceivers()
-    
         
         Bleu.addReceiver(Receiver(communication: NotifyUserID(), get: { [weak self] (manager, request) in
             guard let text: String = self?.peripheralTextField.text else {
@@ -38,7 +36,6 @@ class NotifyViewController: UIViewController {
     deinit {
         print("deinit notify ViewController")
         Bleu.stopAdvertising()
-        Bleu.cancelRequests()
     }
     
     var characteristic: CBMutableCharacteristic?
@@ -57,7 +54,7 @@ class NotifyViewController: UIViewController {
             }
             self.centralTextField.text = String(data: data, encoding: .utf8)
         }
-        Bleu.send([request]) {
+        Bleu.send([request]) { completedRequests, error in
             print("timeout")
         }
         

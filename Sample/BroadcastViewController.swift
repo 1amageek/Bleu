@@ -12,8 +12,7 @@ class BroadcastViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-
-        Bleu.removeAllRequests()
+        
         Bleu.removeAllReceivers()
     
         Bleu.addReceiver(Receiver(communication: BroadcastUserID(), get: { (manager, request) in
@@ -27,7 +26,6 @@ class BroadcastViewController: UIViewController {
     deinit {
         print("deinit notify ViewController")
         Bleu.stopAdvertising()
-        Bleu.cancelRequests()
     }
 
     override func didReceiveMemoryWarning() {
@@ -53,7 +51,7 @@ class BroadcastViewController: UIViewController {
             self.centralTextField.text = String(data: data, encoding: .utf8)
         }
         
-        Bleu.send([request]) {
+        Bleu.send([request]) { completedRequests, error in
             print("timeout")
         }
     }

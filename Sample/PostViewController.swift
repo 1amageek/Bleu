@@ -12,10 +12,8 @@ class PostViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-
-        Bleu.removeAllRequests()
+        
         Bleu.removeAllReceivers()
-    
         Bleu.addReceiver(Receiver(communication: PostUserID(), post: { [weak self] (manager, request) in
             let data: Data = request.value!
             let text: String = String(data: data, encoding: .utf8)!
@@ -29,7 +27,6 @@ class PostViewController: UIViewController {
     deinit {
         print("deinit post ViewController")
         Bleu.stopAdvertising()
-        Bleu.cancelRequests()
     }
 
 
@@ -55,7 +52,7 @@ class PostViewController: UIViewController {
             print("success")
         }
         request.value = data
-        Bleu.send([request]) {
+        Bleu.send([request]) { completedRequests, error in
             print("timeout")
         }
     }

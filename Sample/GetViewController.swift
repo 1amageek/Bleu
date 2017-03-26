@@ -13,7 +13,6 @@ class GetViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        Bleu.removeAllRequests()
         Bleu.removeAllReceivers()
         
         Bleu.addReceiver(Receiver(communication: GetUserID(), get: { [weak self] (manager, request) in
@@ -30,7 +29,6 @@ class GetViewController: UIViewController {
     deinit {
         print("deinit get ViewController")
         Bleu.stopAdvertising()
-        Bleu.cancelRequests()
     }
 
     override func didReceiveMemoryWarning() {
@@ -54,8 +52,11 @@ class GetViewController: UIViewController {
             
             self?.centralTextField.text = text
         }
-        Bleu.send([request]) { 
-            print("timeout")
-        }
+        Bleu.send([request]) { completedRequests, error in
+            if let error = error {
+                print("timeout")
+            }
+        }!
+        
     }
 }
