@@ -20,13 +20,13 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     /// Radar options
     public struct Options {
         public var showPowerAlertKey: Bool = false
-        public var restoreIdentifierKey: String = Radar.restoreIdentifierKey
+        public var restoreIdentifierKey: String
         public var allowDuplicatesKey: Bool = false
         public var thresholdRSSI: Int = -30         // This value is the distance between the devices is about 20 cm.
         public var timeout: Int = 10                // This value is the time to stop scanning Default 10s
         
         init(showPowerAlertKey: Bool = false,
-             restoreIdentifierKey: String = Radar.restoreIdentifierKey,
+             restoreIdentifierKey: String = UUID().uuidString,
              allowDuplicatesKey: Bool = false,
              thresholdRSSI: Int = -30,
              timeout: Int = 10) {
@@ -38,10 +38,11 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         }
     }
     
-    private static let restoreIdentifierKey = "bleu.radar.restore.key"
-    
     private(set) lazy var centralManager: CBCentralManager = {
-        let manager: CBCentralManager = CBCentralManager(delegate: self, queue: self.queue, options: nil)
+        var options: [String: Any] = [:]
+        options[CBCentralManagerOptionRestoreIdentifierKey] = self.restoreIdentifierKey
+        options[CBCentralManagerOptionShowPowerAlertKey] = self.showPowerAlert
+        let manager: CBCentralManager = CBCentralManager(delegate: self, queue: self.queue, options: options)
         manager.delegate = self
         return manager
     }()
@@ -65,9 +66,10 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     
     public var isNotifying: Bool {
         var isNotifying: Bool = false
-        self.characteristics.forEach { (characteristic) in
-            if characteristic.isNotifying {
-                isNotifying = true
+        self.requests.forEach { (request) in
+            switch request.method {
+            case .get(let notify): isNotifying = notify
+            default: break
             }
         }
         return isNotifying
@@ -91,6 +93,10 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
 
     public var completionHandler: (([CBPeripheral: Set<Request>], Error?) -> Void)?
     
+    private var restoreIdentifierKey: String?
+    
+    private var showPowerAlert: Bool = false
+    
     private var radarOptions: Options!
     
     private var scanOptions: [String: Any] = [:]
@@ -110,8 +116,8 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         let serviceUUIDs: [CBUUID] = requests.map({ return $0.serviceUUID })
         scanOptions[CBCentralManagerScanOptionSolicitedServiceUUIDsKey] = serviceUUIDs
         scanOptions[CBCentralManagerScanOptionAllowDuplicatesKey] = options.allowDuplicatesKey
-        scanOptions[CBCentralManagerOptionRestoreIdentifierKey] = options.restoreIdentifierKey
-        scanOptions[CBCentralManagerOptionShowPowerAlertKey] = options.showPowerAlertKey
+        self.restoreIdentifierKey = options.restoreIdentifierKey
+        self.showPowerAlert = options.showPowerAlertKey
         
         self.scanOptions = scanOptions
         self.radarOptions = options
@@ -166,17 +172,21 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             guard let strongSelf = self else {
                 return
             }
-            if strongSelf.centralManager.isScanning {
-                strongSelf.stopScan(cleaned: true)
-                strongSelf.completionHandler?(strongSelf.completedRequests, RadarError.timeout)
+            if !strongSelf.centralManager.isScanning {
+                return
             }
+            if strongSelf.isNotifying && strongSelf.connectedPeripherals.count > 0 {
+                return
+            }
+            strongSelf.stopScan(cleaned: true)
+            strongSelf.completionHandler?(strongSelf.completedRequests, RadarError.timeout)
         }
     }
     
     /// Stop scan
     public func stopScan(cleaned: Bool) {
-        self.centralManager.stopScan()
         debugPrint("[Bleu Radar] Stop scan.")
+        self.centralManager.stopScan()
         if cleaned {
             cleanup()
         }
@@ -319,9 +329,14 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         debugPrint("[Bleu Radar] Check scan completed. connected peripherals count: \(self.connectedPeripherals.count)")
         if self.connectedPeripherals.count == 0 {
             self.stopScan(cleaned: true)
-            self.completionHandler?(self.completedRequests, nil)
-            debugPrint("[Bleu Radar] Completed")
+            self.completion()
         }
+    }
+
+    private func completion() {
+        debugPrint("[Bleu Radar] Completed")
+        self.completionHandler?(self.completedRequests, nil)
+        
     }
     
     // MARK: -
