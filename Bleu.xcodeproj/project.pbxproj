@@ -34,7 +34,7 @@
 
 /* Begin PBXFileReference section */
 		125FA7C61E7631B600DC0D62 /* Bleu.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Bleu.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		1261C4511E86541900E53D04 /* Radar.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Radar.swift; sourceTree = "<group>"; };
+		1261C4511E86541900E53D04 /* Radar.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = Radar.swift; path = ../Sources/Radar.swift; sourceTree = "<group>"; };
 		1264FA321E7FC088005DCC2E /* BeaconViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BeaconViewController.swift; sourceTree = "<group>"; };
 		12AD06D61E794054007D5311 /* Sample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Sample.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		12AD06D81E794054007D5311 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
