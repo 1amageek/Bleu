@@ -65,9 +65,7 @@ Bleu.startAdvertising()
 
 #### Central(Client)
 ``` Swift
-let request: Request = Request(item: GetUserID())
-Bleu.send(request) { (peripheral, characteristic, error) in
-    
+let request: Request = Request(communication: GetUserID()) { [weak self] (peripheral, characteristic, error) in
     if let error = error {
         debugPrint(error)
         return
@@ -75,7 +73,13 @@ Bleu.send(request) { (peripheral, characteristic, error) in
     
     let data: Data = characteristic.value!
     let text: String = String(data: data, encoding: .utf8)!
-    print(text)
+    
+    self?.centralTextField.text = text
+}
+Bleu.send([request]) { completedRequests, error in
+    if let error = error {
+        print("timeout")
+    }
 }
 ```
 
@@ -95,16 +99,19 @@ Bleu.startAdvertising()
 
 #### Central(Client)
 ``` Swift
-let data: Data = "sample".data(using: .utf8)!
-let request: Request = Request(item: PostUserID())
-request.value = data
-Bleu.send(request) { (peripheral, characteristic, error) in
-    
+let data: Data = "Sample".data(using: .utf8)!
+let request: Request = Request(communication: PostUserID()) { (peripheral, characteristic, error) in
     if let error = error {
         debugPrint(error)
         return
     }
     
     print("success")
+}
+request.value = data
+Bleu.send([request]) { completedRequests, error in
+    if let error = error {
+        print("timeout")
+    }
 }
 ```
