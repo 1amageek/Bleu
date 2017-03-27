@@ -56,7 +56,7 @@ class GetViewController: UIViewController {
             if let error = error {
                 print("timeout")
             }
-        }!
+        }
         
     }
 }

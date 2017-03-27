@@ -14,7 +14,16 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     
     public enum RadarError: Error {
         case timeout
+        case canceled
         case invalidRequest
+        
+        public var localizedDescription: String {
+            switch self {
+            case .timeout: return "[Bleu Radar] *** Error: Scanning timeout."
+            case .canceled: return "[Bleu Radar] *** Error: Scan was canceled."
+            case .invalidRequest: return "[Bleu Radar] *** Error: Invalid Request."
+            }
+        }
     }
     
     /// Radar options
@@ -183,8 +192,14 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         }
     }
     
+    public func cancel() {
+        debugPrint("[Bleu Radar] Cancel")
+        self.stopScan(cleaned: true)
+        self.completionHandler?(self.completedRequests, RadarError.canceled)
+    }
+    
     /// Stop scan
-    public func stopScan(cleaned: Bool) {
+    private func stopScan(cleaned: Bool) {
         debugPrint("[Bleu Radar] Stop scan.")
         self.centralManager.stopScan()
         if cleaned {
@@ -193,14 +208,14 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     }
     
     /// Clean CenteralManager
-    public func cleanup() {
+    private func cleanup() {
         self.discoveredPeripherals = []
         self.connectedPeripherals = []
         debugPrint("[Bleu Radar] Clean")
     }
     
     /// Cancel peripheral connection
-    public func cancelPeripheralConnection(_ peripheral: CBPeripheral) {
+    private func cancelPeripheralConnection(_ peripheral: CBPeripheral) {
         self.centralManager.cancelPeripheralConnection(peripheral)
     }
     
