@@ -3,6 +3,23 @@
 # Bleu
 BLE for U🎁
 
+ [![Version](http://img.shields.io/cocoapods/v/Bleu.svg)](http://cocoapods.org/?q=PaperKit)
+ [![Platform](http://img.shields.io/cocoapods/p/Bleu.svg)]()
+
+
+## Installation
+
+<!--
+#### [Carthage](https://github.com/Carthage/Carthage)
+-->
+
+#### [CocoaPods](https://github.com/cocoapods/cocoapods)
+
+- Insert `pod 'Bleu' ` to your Podfile.
+- Run `pod install`.
+
+Note: CocoaPods 1.1.0 is required to install Bleu.
+ 
 ## Usage
 
 Please customize `Communicable+.swift`.
