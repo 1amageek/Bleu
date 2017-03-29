@@ -1,7 +1,7 @@
 <img src="https://github.com/1amageek/Bleu/blob/master/Bleu.png" width="400px">
 
 # Bleu
-BLE for U🎁
+Bleu is a library that can handle CoreBluetooth easily.
 
  [![Version](http://img.shields.io/cocoapods/v/Bleu.svg)](http://cocoapods.org/?q=PaperKit)
  [![Platform](http://img.shields.io/cocoapods/p/Bleu.svg)]()
