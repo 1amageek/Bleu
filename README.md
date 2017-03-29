@@ -29,10 +29,10 @@ uuidgen // create uuid
 ```
 
 ``` Swift
-extension BLEService {
+extension Communicable {
     
     public var serviceUUID: CBUUID {
-        return CBUUID(string: "4E6C6189-D06B-4835-8F3B-F5CBC36560FB")
+        return CBUUID(string: "YOUR UUID")
     }
     
 }
@@ -44,7 +44,7 @@ struct GetUserIDItem: Communicable {
     }
     
     public var characteristicUUID: CBUUID {
-        return CBUUID(string: "BC9E790A-5682-4B4E-9366-E81BB97107A1")
+        return CBUUID(string: "YOUR UUID")
     }
     
 }
@@ -56,7 +56,7 @@ struct PostUserIDItem: Communicable {
     }
     
     public var characteristicUUID: CBUUID {
-        return CBUUID(string: "55B59CD5-8B59-4BA8-9050-AA4B2320294F")
+        return CBUUID(string: "YOUR UUID")
     }
     
 }
