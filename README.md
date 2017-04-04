@@ -68,7 +68,7 @@ struct PostUserIDItem: Communicable {
 
 #### Peripheral(Server)
 ``` Swift
-Bleu.addRecevier(Receiver(GetUserID(), get: { [weak self] (manager, request) in
+Bleu.addReceiver(Receiver(GetUserID(), get: { [weak self] (manager, request) in
     guard let text: String = self?.textField.text else {
         manager.respond(to: request, withResult: .attributeNotFound)
         return
@@ -104,7 +104,7 @@ Bleu.send([request]) { completedRequests, error in
 
 #### Peripheral(Server)
 ``` Swift
-Bleu.addRecevier(Receiver(PostUserID(), post: { (manager, request) in
+Bleu.addReceiver(Receiver(PostUserID(), post: { (manager, request) in
     let data: Data = request.value!
     let text: String = String(data: data, encoding: .utf8)!
     print(text)
