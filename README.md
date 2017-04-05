@@ -1,8 +1,25 @@
 <img src="https://github.com/1amageek/Bleu/blob/master/Bleu.png" width="400px">
 
 # Bleu
-BLE for U🎁
+Bleu is a library that can handle CoreBluetooth easily.
 
+ [![Version](http://img.shields.io/cocoapods/v/Bleu.svg)](http://cocoapods.org/?q=PaperKit)
+ [![Platform](http://img.shields.io/cocoapods/p/Bleu.svg)]()
+
+
+## Installation
+
+<!--
+#### [Carthage](https://github.com/Carthage/Carthage)
+-->
+
+#### [CocoaPods](https://github.com/cocoapods/cocoapods)
+
+- Insert `pod 'Bleu' ` to your Podfile.
+- Run `pod install`.
+
+Note: CocoaPods 1.1.0 is required to install Bleu.
+ 
 ## Usage
 
 Please customize `Communicable+.swift`.
@@ -12,10 +29,10 @@ uuidgen // create uuid
 ```
 
 ``` Swift
-extension BLEService {
+extension Communicable {
     
     public var serviceUUID: CBUUID {
-        return CBUUID(string: "4E6C6189-D06B-4835-8F3B-F5CBC36560FB")
+        return CBUUID(string: "YOUR UUID")
     }
     
 }
@@ -27,7 +44,7 @@ struct GetUserIDItem: Communicable {
     }
     
     public var characteristicUUID: CBUUID {
-        return CBUUID(string: "BC9E790A-5682-4B4E-9366-E81BB97107A1")
+        return CBUUID(string: "YOUR UUID")
     }
     
 }
@@ -39,7 +56,7 @@ struct PostUserIDItem: Communicable {
     }
     
     public var characteristicUUID: CBUUID {
-        return CBUUID(string: "55B59CD5-8B59-4BA8-9050-AA4B2320294F")
+        return CBUUID(string: "YOUR UUID")
     }
     
 }
@@ -51,7 +68,7 @@ struct PostUserIDItem: Communicable {
 
 #### Peripheral(Server)
 ``` Swift
-Bleu.addRecevier(Receiver(GetUserID(), get: { [weak self] (manager, request) in
+Bleu.addReceiver(Receiver(GetUserID(), get: { [weak self] (manager, request) in
     guard let text: String = self?.textField.text else {
         manager.respond(to: request, withResult: .attributeNotFound)
         return
@@ -87,7 +104,7 @@ Bleu.send([request]) { completedRequests, error in
 
 #### Peripheral(Server)
 ``` Swift
-Bleu.addRecevier(Receiver(PostUserID(), post: { (manager, request) in
+Bleu.addReceiver(Receiver(PostUserID(), post: { (manager, request) in
     let data: Data = request.value!
     let text: String = String(data: data, encoding: .utf8)!
     print(text)
