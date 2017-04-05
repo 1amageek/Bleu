@@ -35,10 +35,10 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         public var timeout: Int = 10                // This value is the time to stop scanning Default 10s
         
         public init(showPowerAlertKey: Bool = false,
-             restoreIdentifierKey: String = UUID().uuidString,
-             allowDuplicatesKey: Bool = false,
-             thresholdRSSI: Int = -30,
-             timeout: Int = 10) {
+                    restoreIdentifierKey: String = UUID().uuidString,
+                    allowDuplicatesKey: Bool = false,
+                    thresholdRSSI: Int = -30,
+                    timeout: Int = 10) {
             self.showPowerAlertKey = showPowerAlertKey
             self.restoreIdentifierKey = restoreIdentifierKey
             self.allowDuplicatesKey = allowDuplicatesKey
@@ -99,7 +99,7 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     public var timeout: Int {
         return self.radarOptions.timeout
     }
-
+    
     public var completionHandler: (([CBPeripheral: Set<Request>], Error?) -> Void)?
     
     private var restoreIdentifierKey: String?
@@ -117,10 +117,10 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     private var completedRequests: [CBPeripheral: Set<Request>] = [:]
     
     // MARK: -
-
+    
     public init(requests: [Request], options: Options) {
         super.init()
-
+        
         var scanOptions: [String: Any] = [:]
         let serviceUUIDs: [CBUUID] = requests.map({ return $0.serviceUUID })
         scanOptions[CBCentralManagerScanOptionSolicitedServiceUUIDsKey] = serviceUUIDs
@@ -234,10 +234,12 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     
     public func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
         self.discoveredPeripherals.insert(peripheral)
-        let thresholdRSSI: NSNumber = self.thresholdRSSI as NSNumber
-        if thresholdRSSI.intValue < RSSI.intValue {
-            self.centralManager.connect(peripheral, options: nil)
-            stopScan(cleaned: false)
+        if self.allowDuplicates {
+            let thresholdRSSI: NSNumber = self.thresholdRSSI as NSNumber
+            if thresholdRSSI.intValue < RSSI.intValue {
+                self.centralManager.connect(peripheral, options: nil)
+                stopScan(cleaned: false)
+            }
         } else {
             self.centralManager.connect(peripheral, options: nil)
         }
@@ -347,7 +349,7 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             self.completion()
         }
     }
-
+    
     private func completion() {
         debugPrint("[Bleu Radar] Completed")
         self.completionHandler?(self.completedRequests, nil)
