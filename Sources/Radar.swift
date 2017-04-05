@@ -34,7 +34,7 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         public var thresholdRSSI: Int = -30         // This value is the distance between the devices is about 20 cm.
         public var timeout: Int = 10                // This value is the time to stop scanning Default 10s
         
-        init(showPowerAlertKey: Bool = false,
+        public init(showPowerAlertKey: Bool = false,
              restoreIdentifierKey: String = UUID().uuidString,
              allowDuplicatesKey: Bool = false,
              thresholdRSSI: Int = -30,
