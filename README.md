@@ -6,7 +6,7 @@ Bleu is a library that can handle CoreBluetooth easily.
  [![Version](http://img.shields.io/cocoapods/v/Bleu.svg)](http://cocoapods.org/?q=Bleu)
  [![Platform](http://img.shields.io/cocoapods/p/Bleu.svg)]()
  [![Awesome](https://cdn.rawgit.com/sindresorhus/awesome/d7305f38d29fed78fa85652e3a63e154dd8e8829/media/badge.svg)](https://github.com/sindresorhus/awesome)
-  [![Downloads](https://img.shields.io/cocoapods/dt/Bleu.svg?label=Total%20Downloads&colorB=28B9FE)]
+ [![Downloads](https://img.shields.io/cocoapods/dt/Bleu.svg?label=Total%20Downloads&colorB=28B9FE)]()
 
 
 ## Installation
