@@ -42,7 +42,7 @@ extension Communicable {
 struct GetUserIDItem: Communicable {
     
     public var method: RequestMethod {
-        return .get
+        return .get(isNotified: false)
     }
     
     public var characteristicUUID: CBUUID {
