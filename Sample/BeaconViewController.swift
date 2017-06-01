@@ -16,7 +16,7 @@ class BeaconViewController: UIViewController {
         let uuid: UUID = UUID(uuidString: "97D52D26-CF3E-4FF0-9456-2D39D98F6E78")!
         let beaconRegion: CLBeaconRegion = CLBeaconRegion(proximityUUID: uuid, major: 0, minor: 0, identifier: "bleu.beacon")
         
-        let data = beaconRegion.peripheralData(withMeasuredPower: nil)
+        _ = beaconRegion.peripheralData(withMeasuredPower: nil)
         
     }
 

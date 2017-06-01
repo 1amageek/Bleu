@@ -53,7 +53,7 @@ class GetViewController: UIViewController {
             self?.centralTextField.text = text
         }
         Bleu.send([request]) { completedRequests, error in
-            if let error = error {
+            if error != nil {
                 print("timeout")
             }
         }
