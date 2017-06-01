@@ -1,7 +1,7 @@
 Pod::Spec.new do |s|
 
   s.name         = "Bleu"
-  s.version      = "0.3.3"
+  s.version      = "1.0"
   s.summary      = "BLE(Bluetooth LE) for U💖). Bleu enables communication in server and client format."
   s.description  = <<-DESC
   BLE(Bluetooth LE) for U💖). Bleu enables communication in server and client format.
