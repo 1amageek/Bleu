@@ -20,7 +20,7 @@ extension Communicable {
 struct GetUserID: Communicable {
     
     public var method: RequestMethod {
-        return .get(false)
+        return .get(isNotified: false)
     }
     
     public var characteristicUUID: CBUUID? {
@@ -44,7 +44,7 @@ struct PostUserID: Communicable {
 struct NotifyUserID: Communicable {
     
     public var method: RequestMethod {
-        return .get(true)
+        return .get(isNotified: true)
     }
     
     public var characteristicUUID: CBUUID? {
@@ -60,7 +60,7 @@ struct BroadcastUserID: Communicable {
 //    }
     
     public var method: RequestMethod {
-        return .broadcast(false)
+        return .broadcast(isNotified: false)
     }
     
     public var characteristicUUID: CBUUID? {
