@@ -10,8 +10,11 @@ import Foundation
 import UIKit
 import CoreBluetooth
 
+/**
+ Radar controls CBCentralManagerDelegate and CBPeripheralDelegate.
+ */
 public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
-    
+
     public enum RadarError: Error {
         case timeout
         case canceled
@@ -28,10 +31,20 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     
     /// Radar options
     public struct Options {
+
+        /// Same as CBCentralManagerOptionShowPowerAlertKey.
         public var showPowerAlertKey: Bool = false
+
+        /// Same as CBCentralManagerOptionRestoreIdentifierKey.
         public var restoreIdentifierKey: String
+
+        /// Same as CBCentralManagerScanOptionAllowDuplicatesKey
         public var allowDuplicatesKey: Bool = false
+
+        /// Set up RSSI that can communicate
         public var thresholdRSSI: Int = -30         // This value is the distance between the devices is about 20 cm.
+
+        /// Set communication timeout.
         public var timeout: Int = 10                // This value is the time to stop scanning Default 10s
         
         public init(showPowerAlertKey: Bool = false,
@@ -64,15 +77,18 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     
     /// Connected peripherals
     private(set) var connectedPeripherals: Set<CBPeripheral> = []
-    
+
+    /// Controlled service UUID
     public var serviceUUIDs: [CBUUID] {
         return self.requests.map({ return $0.serviceUUID })
     }
-    
+
+    /// Controlled characteristics
     public var characteristics: [CBCharacteristic] {
         return self.requests.map({ return $0.characteristic })
     }
-    
+
+    /// It returns whether it is notifying.
     public var isNotifying: Bool {
         var isNotifying: Bool = false
         self.requests.forEach { (request) in
@@ -83,41 +99,60 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         }
         return isNotifying
     }
-    
+
+    /// Returns the status of CMCentralManager.
     public var status: CBManagerState {
         return self.centralManager.state
     }
-    
+
+    /// Returns the response threshold.
     public var thresholdRSSI: Int {
         return self.radarOptions.thresholdRSSI
     }
-    
+
+    /// Return communication multiple times.
     public var allowDuplicates: Bool {
         return self.radarOptions.allowDuplicatesKey
     }
-    
+
+
+    /// Return time for communication timeout.
     public var timeout: Int {
         return self.radarOptions.timeout
     }
-    
+
+    /// Callback called after communication is over.
     public var completionHandler: (([CBPeripheral: Set<Request>], Error?) -> Void)?
-    
+
+    /// Restore Identifier
     private var restoreIdentifierKey: String?
-    
+
+    /// Show Power alert
     private var showPowerAlert: Bool = false
-    
+
+    /// Radar's options
     private var radarOptions: Options!
-    
+
+    /// Scan options
     private var scanOptions: [String: Any] = [:]
-    
+
+    /// It is called at the timing when Bluetooth becomes ready to communicate.
     private var startScanBlock: (([String : Any]?) -> Void)?
-    
+
+    /// Request managed by Radar.
     private var requests: [Request] = []
-    
+
+    /// Request completed communication.
     private var completedRequests: [CBPeripheral: Set<Request>] = [:]
     
     // MARK: -
-    
+
+    /**
+     It is initialization of Radar.
+     
+     - parameter requests: The server sets a request to send.
+     - parameter options: Set the option to change Radar's behavior.
+     */
     public init(requests: [Request], options: Options) {
         super.init()
         
@@ -149,12 +184,8 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         // TODO:
     }
     
-    // MARK - method
-    
-    /**
-     Scan
-     */
-    
+    // MARK: -
+
     /// Radar is scanning
     public var isScanning: Bool {
         return self.centralManager.isScanning
@@ -191,7 +222,8 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             strongSelf.completionHandler?(strongSelf.completedRequests, RadarError.timeout)
         }
     }
-    
+
+    /// Cancel
     public func cancel() {
         debugPrint("[Bleu Radar] Cancel")
         self.stopScan(cleaned: true)
@@ -268,6 +300,8 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     public func centralManager(_ central: CBCentralManager, willRestoreState dict: [String : Any]) {
         //let peripherals: [CBPeripheral] = dict[CBAdvertisementDataLocalNameKey]
     }
+
+    // MARK: -
     
     private func get(peripheral: CBPeripheral, characteristic: CBCharacteristic) {
         self.requests.forEach { (request) in

@@ -1,6 +1,6 @@
 //
 //  Receiver.swift
-//  Antenna
+//  Bleu
 //
 //  Created by 1amageek on 2017/03/13.
 //  Copyright © 2017年 Stamp inc. All rights reserved.
@@ -9,6 +9,11 @@
 import Foundation
 import CoreBluetooth
 
+/**
+ # Receiver
+
+ Receiver controls CoreBluetooth's Peripheral in a simple way.
+ */
 public class Receiver: Communicable {
     
     public typealias ReceiveGetHandler = ((CBPeripheralManager, CBATTRequest) -> Void)
@@ -32,7 +37,7 @@ public class Receiver: Communicable {
     public var subscribe: ReceiveNotifyHandler?
     
     public var unsubscribe: ReceiveNotifyHandler?
-    
+
     public init<T: Communicable>(communication: T,
                 get: ReceiveGetHandler? = nil,
                 post: ReceivePostHandler? = nil,
@@ -50,5 +55,4 @@ public class Receiver: Communicable {
                                                       value: nil,
                                                       permissions: method.permissions)
     }
-    
 }
