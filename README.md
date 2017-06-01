@@ -1,4 +1,4 @@
-<img src="https://github.com/1amageek/Bleu/blob/master/Bleu.png" width="400px">
+<img src="https://github.com/1amageek/Bleu/blob/master/Bleu.png" width="100%">
 
 # Bleu
 Bleu is a library that can handle CoreBluetooth easily.
