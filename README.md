@@ -1,7 +1,8 @@
 <img src="https://github.com/1amageek/Bleu/blob/master/Bleu.png" width="100%">
 
 # Bleu
-Bleu is a library that can handle CoreBluetooth easily.
+Bleu is a Bluetooth library.
+Bleu is the easiest way to operate CoreBluetooth.
 
  [![Version](http://img.shields.io/cocoapods/v/Bleu.svg)](http://cocoapods.org/?q=Bleu)
  [![Platform](http://img.shields.io/cocoapods/p/Bleu.svg)]()
