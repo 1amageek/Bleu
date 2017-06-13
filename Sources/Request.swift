@@ -26,10 +26,10 @@ public class Request: Communicable {
     public let method: RequestMethod
 
     /// CoreBluetooth characteristic UUID
-    public let characteristicUUID: CBUUID?
+    public var characteristicUUID: CBUUID?
 
     /// CoreBluetooth characteristic
-    public let characteristic: CBMutableCharacteristic
+    public var characteristic: CBMutableCharacteristic?
 
     /// CoreBluetooth options
     public var options: [String: Any]?
@@ -41,7 +41,12 @@ public class Request: Communicable {
     public var response: ResponseHandler?
 
     ///
-    public var PSM: CBL2CAPPSM?
+    private(set) var PSM: CBL2CAPPSM?
+
+    public init<T: Communicable>(communication: T) {
+        self.serviceUUID = communication.serviceUUID
+        self.method = communication.method
+    }
 
     /**
      It communicates with the server with the method defined by Communicable.
@@ -49,14 +54,24 @@ public class Request: Communicable {
      - parameter communication: Set Communicable compliant Struct.
      - parameter response: Set the handler for the response. 
     */
-    public init<T: Communicable>(communication: T, response: @escaping ResponseHandler) {
-        self.serviceUUID = communication.serviceUUID
-        self.method = communication.method
+    public convenience init<T: Communicable>(communication: T, response: @escaping ResponseHandler) {
+        self.init(communication: communication)
         self.response = response
         self.characteristicUUID = communication.characteristicUUID
         self.characteristic = CBMutableCharacteristic(type: communication.characteristicUUID!,
                                                       properties: method.properties,
                                                       value: communication.value,
                                                       permissions: method.permissions)
+    }
+
+    /**
+     It communicates with the server with the method defined by Communicable.
+
+     - parameter communication: Set Communicable compliant Struct.
+     - parameter PSM: Set channel PSM
+     */
+    public convenience init<T: Communicable>(communication: T, PSM: CBL2CAPPSM) {
+        self.init(communication: communication)
+        self.PSM = PSM
     }
 }
