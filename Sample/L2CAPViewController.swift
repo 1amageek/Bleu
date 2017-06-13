@@ -35,6 +35,7 @@ class L2CAPViewController: UIViewController {
     @IBOutlet weak var textField: UITextField!
     @IBOutlet weak var psmLabel: UILabel!
     
+    @available(iOS 11.0, *)
     @IBAction func openChannel(_ sender: Any) {
         guard let psmStr: String = self.textField.text else {
             return

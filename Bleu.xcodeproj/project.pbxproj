@@ -12,7 +12,6 @@
 		1261C4521E86541900E53D04 /* Radar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1261C4511E86541900E53D04 /* Radar.swift */; };
 		1261C4531E86541900E53D04 /* Radar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1261C4511E86541900E53D04 /* Radar.swift */; };
 		1264FA331E7FC088005DCC2E /* BeaconViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1264FA321E7FC088005DCC2E /* BeaconViewController.swift */; };
-		129FE5D21EED0F8600934B95 /* Streamer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 129FE5D11EED0F8600934B95 /* Streamer.swift */; };
 		12AD06D91E794054007D5311 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12AD06D81E794054007D5311 /* AppDelegate.swift */; };
 		12AD06E01E794054007D5311 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 12AD06DF1E794054007D5311 /* Assets.xcassets */; };
 		12AD06E31E794054007D5311 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 12AD06E11E794054007D5311 /* LaunchScreen.storyboard */; };
@@ -32,6 +31,8 @@
 		12AD07121E794442007D5311 /* Communicable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12AD06F71E794397007D5311 /* Communicable.swift */; };
 		12AD07131E794442007D5311 /* Receiver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12AD06F81E794397007D5311 /* Receiver.swift */; };
 		12AD07141E794442007D5311 /* Request.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12AD06F91E794397007D5311 /* Request.swift */; };
+		12C3C94F1EF00A7500BBF51D /* Streamer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 129FE5D11EED0F8600934B95 /* Streamer.swift */; };
+		12C3C9501EF00A7900BBF51D /* Streamer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 129FE5D11EED0F8600934B95 /* Streamer.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -100,11 +101,11 @@
 			children = (
 				12AD06F51E794397007D5311 /* Beacon.swift */,
 				1261C4511E86541900E53D04 /* Radar.swift */,
+				129FE5D11EED0F8600934B95 /* Streamer.swift */,
 				12AD06F61E794397007D5311 /* Bleu.swift */,
 				12AD06F71E794397007D5311 /* Communicable.swift */,
 				12AD06F81E794397007D5311 /* Receiver.swift */,
 				12AD06F91E794397007D5311 /* Request.swift */,
-				129FE5D11EED0F8600934B95 /* Streamer.swift */,
 			);
 			path = Bleu;
 			sourceTree = "<group>";
@@ -243,7 +244,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				129FE5D21EED0F8600934B95 /* Streamer.swift in Sources */,
+				12C3C9501EF00A7900BBF51D /* Streamer.swift in Sources */,
 				12AD06FF1E794397007D5311 /* Request.swift in Sources */,
 				12AD06FD1E794397007D5311 /* Communicable.swift in Sources */,
 				12AD06FC1E794397007D5311 /* Bleu.swift in Sources */,
@@ -269,6 +270,7 @@
 				1261C4531E86541900E53D04 /* Radar.swift in Sources */,
 				12AD07101E794442007D5311 /* Beacon.swift in Sources */,
 				1264FA331E7FC088005DCC2E /* BeaconViewController.swift in Sources */,
+				12C3C94F1EF00A7500BBF51D /* Streamer.swift in Sources */,
 				1212D03F1EEFCEA900024269 /* L2CAPViewController.swift in Sources */,
 				12AD06D91E794054007D5311 /* AppDelegate.swift in Sources */,
 				1260BB9E1E7D705000187496 /* Communicable+.swift in Sources */,

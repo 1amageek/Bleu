@@ -42,6 +42,8 @@ public class Bleu {
     /// It is a radar for exploring the server.
     private(set) var radars: Set<Radar> = []
 
+    private(set) var streamers: Set<NSObject> = []
+
     /// Initialize
     public init() {
         server.delegate = self
@@ -97,16 +99,16 @@ public class Bleu {
     }
 
     // MARK: - Open L2CAPChannel
+    @available(iOS 11.0, *)
     @discardableResult
-    public class func openL2CAPChannel(_ request: Request, options: Radar.Options = Radar.Options(), completionBlock: (([CBPeripheral: Set<Request>], Error?) -> Void)?) -> Radar? {
-        let radar = Radar(request: request, options: options)
-        shared.radars.insert(radar)
-        radar.completionHandler = { [weak radar] (completedRequests, error) in
-            shared.radars.remove(radar!)
-            completionBlock?(completedRequests, error)
+    public class func openL2CAPChannel(_ request: Request, options: Streamer.Options = Streamer.Options(), completionBlock: (([CBPeripheral: Set<Request>], Error?) -> Void)?) -> Streamer? {
+        let streamer = Streamer(request: request, options: options)
+        shared.streamers.insert(streamer)
+        streamer.didOpenChannelBlock = { (peripheral, PSM, error) in
+            
         }
-        radar.resume()
-        return radar
+        streamer.resume()
+        return streamer
     }
 
     // MARK: - Request

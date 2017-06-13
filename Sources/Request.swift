@@ -70,6 +70,7 @@ public class Request: Communicable {
      - parameter communication: Set Communicable compliant Struct.
      - parameter PSM: Set channel PSM
      */
+    @available(iOS 11.0, *)
     public convenience init<T: Communicable>(communication: T, PSM: CBL2CAPPSM) {
         self.init(communication: communication)
         self.PSM = PSM

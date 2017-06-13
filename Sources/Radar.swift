@@ -85,7 +85,7 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
 
     /// Controlled characteristics
     public var characteristics: [CBCharacteristic] {
-        return self.requests.map({ return $0.characteristic })
+        return self.requests.flatMap({ return $0.characteristic })
     }
 
     /// It returns whether it is notifying.
@@ -144,35 +144,8 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
 
     /// Request completed communication.
     private var completedRequests: [CBPeripheral: Set<Request>] = [:]
-
-    private(set) var PSM: CBL2CAPPSM?
     
     // MARK: -
-
-    /**
-     It is initialization of Radar.
-
-     - parameter requests: The server sets a request to send.
-     - parameter options: Set the option to change Radar's behavior.
-     */
-    public init(request: Request, options: Options) {
-        super.init()
-
-        var scanOptions: [String: Any] = [:]
-        let serviceUUIDs: [CBUUID] = [request.serviceUUID]
-        scanOptions[CBCentralManagerScanOptionSolicitedServiceUUIDsKey] = serviceUUIDs
-        scanOptions[CBCentralManagerScanOptionAllowDuplicatesKey] = options.allowDuplicatesKey
-        self.restoreIdentifierKey = options.restoreIdentifierKey
-        self.showPowerAlert = options.showPowerAlertKey
-
-        self.scanOptions = scanOptions
-        self.radarOptions = options
-        self.requests = [request]
-        self.PSM = request.PSM
-
-        NotificationCenter.default.addObserver(self, selector: #selector(applicationDidEnterBackground), name: NSNotification.Name.UIApplicationDidEnterBackground, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(applicationWillResignActive), name: NSNotification.Name.UIApplicationDidBecomeActive, object: nil)
-    }
 
     /**
      It is initialization of Radar.
@@ -310,17 +283,12 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         peripheral.delegate = self
         peripheral.discoverServices(serviceUUIDs)
         self.connectedPeripherals.insert(peripheral)
-        debugPrint("[Bleu Radar] donnect peripheral. ", peripheral)
-        if #available(iOS 11.0, *) {
-            if let PSM: CBL2CAPPSM = self.PSM {
-                peripheral.openL2CAPChannel(PSM)
-            }
-        }
+        debugPrint("[Bleu Radar] did connect peripheral. ", peripheral)
     }
     
     public func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
-        debugPrint("[Bleu Radar] fail to connect peripheral. ", peripheral, error ?? "")
         self.connectedPeripherals.remove(peripheral)
+        debugPrint("[Bleu Radar] fail to connect peripheral. ", peripheral, error ?? "")
     }
     
     public func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
@@ -438,7 +406,7 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             return
         }
         debugPrint("[Bleu Radar] did discover service. services", services)
-        let characteristicUUIDs: [CBUUID] = self.requests.map({ return $0.characteristicUUID! })
+        let characteristicUUIDs: [CBUUID] = self.requests.flatMap({ return $0.characteristicUUID })
         for service in services {
             peripheral.discoverCharacteristics(characteristicUUIDs, for: service)
         }
@@ -518,13 +486,6 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         debugPrint("[Bleu Radar] did write value for descriptor", peripheral, descriptor)
     }
 
-    // MARK: - L2CAP
-
-    @available(iOS 11.0, *)
-    public func peripheral(_ peripheral: CBPeripheral, didOpen channel: CBL2CAPChannel?, error: Error?) {
-        debugPrint("[Bleu Radar] did open channel", peripheral, channel ?? "")
-    }
-    
     // MARK: -
     
     internal func _debug() {
