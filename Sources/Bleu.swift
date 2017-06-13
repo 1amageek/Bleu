@@ -40,7 +40,7 @@ public class Bleu {
     // MARK: -
 
     /// It is a radar for exploring the server.
-    internal var radars: Set<Radar> = []
+    private(set) var radars: Set<Radar> = []
 
     /// Initialize
     public init() {
@@ -96,8 +96,17 @@ public class Bleu {
         shared.server.unpublishL2CAPChannel()
     }
 
-    public class func openL2CAPChannel(PSM: CBL2CAPPSM) {
-        
+    // MARK: - Open L2CAPChannel
+    @discardableResult
+    public class func openL2CAPChannel(_ request: Request, options: Radar.Options = Radar.Options(), completionBlock: (([CBPeripheral: Set<Request>], Error?) -> Void)?) -> Radar? {
+        let radar = Radar(request: request, options: options)
+        shared.radars.insert(radar)
+        radar.completionHandler = { [weak radar] (completedRequests, error) in
+            shared.radars.remove(radar!)
+            completionBlock?(completedRequests, error)
+        }
+        radar.resume()
+        return radar
     }
 
     // MARK: - Request

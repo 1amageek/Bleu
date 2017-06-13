@@ -67,6 +67,6 @@ struct L2CAPID: Communicable {
     }
 
     public var characteristicUUID: CBUUID? {
-        return CBUUID(string: "DC87206F-3B0B-4D9F-A93F-A72DF3DEC226")
+        return CBUUID(string: "1537761A-68AB-494A-8FCA-50C09FCC271A")
     }
 }

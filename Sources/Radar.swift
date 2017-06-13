@@ -144,8 +144,35 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
 
     /// Request completed communication.
     private var completedRequests: [CBPeripheral: Set<Request>] = [:]
+
+    private(set) var PSM: CBL2CAPPSM?
     
     // MARK: -
+
+    /**
+     It is initialization of Radar.
+
+     - parameter requests: The server sets a request to send.
+     - parameter options: Set the option to change Radar's behavior.
+     */
+    public init(request: Request, options: Options) {
+        super.init()
+
+        var scanOptions: [String: Any] = [:]
+        let serviceUUIDs: [CBUUID] = [request.serviceUUID]
+        scanOptions[CBCentralManagerScanOptionSolicitedServiceUUIDsKey] = serviceUUIDs
+        scanOptions[CBCentralManagerScanOptionAllowDuplicatesKey] = options.allowDuplicatesKey
+        self.restoreIdentifierKey = options.restoreIdentifierKey
+        self.showPowerAlert = options.showPowerAlertKey
+
+        self.scanOptions = scanOptions
+        self.radarOptions = options
+        self.requests = [request]
+        self.PSM = request.PSM
+
+        NotificationCenter.default.addObserver(self, selector: #selector(applicationDidEnterBackground), name: NSNotification.Name.UIApplicationDidEnterBackground, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(applicationWillResignActive), name: NSNotification.Name.UIApplicationDidBecomeActive, object: nil)
+    }
 
     /**
      It is initialization of Radar.
@@ -274,9 +301,6 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             }
         } else {
             self.centralManager.connect(peripheral, options: nil)
-//            if #available(iOS 11.0, *) {
-//                peripheral.openL2CAPChannel(<#T##PSM: CBL2CAPPSM##CBL2CAPPSM#>)
-//            }
         }
         debugPrint("[Bleu Radar] discover peripheral. ", peripheral, RSSI)
     }
@@ -287,6 +311,11 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         peripheral.discoverServices(serviceUUIDs)
         self.connectedPeripherals.insert(peripheral)
         debugPrint("[Bleu Radar] donnect peripheral. ", peripheral)
+        if #available(iOS 11.0, *) {
+            if let PSM: CBL2CAPPSM = self.PSM {
+                peripheral.openL2CAPChannel(PSM)
+            }
+        }
     }
     
     public func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
@@ -308,7 +337,9 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     
     private func get(peripheral: CBPeripheral, characteristic: CBCharacteristic) {
         self.requests.forEach { (request) in
-            if request.characteristicUUID == characteristic.uuid {
+            if let
+                characteristicUUID: CBUUID = request.characteristicUUID,
+                characteristicUUID == characteristic.uuid {
                 peripheral.readValue(for: characteristic)
             }
         }
@@ -316,7 +347,9 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     
     private func post(peripheral: CBPeripheral, characteristic: CBCharacteristic) {
         self.requests.forEach { (request) in
-            if request.characteristicUUID == characteristic.uuid {
+            if let
+                characteristicUUID: CBUUID = request.characteristicUUID,
+                characteristicUUID == characteristic.uuid {
                 guard let data: Data = request.value else {
                     return
                 }
@@ -327,7 +360,9 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     
     private func notify(peripheral: CBPeripheral, characteristic: CBCharacteristic) {
         self.requests.forEach { (request) in
-            if request.characteristicUUID == characteristic.uuid {
+            if let
+                characteristicUUID: CBUUID = request.characteristicUUID,
+                characteristicUUID == characteristic.uuid {
                 switch request.method {
                 case .get(let isNotify): peripheral.setNotifyValue(isNotify, for: characteristic)
                 default: break
@@ -338,7 +373,9 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     
     private func receiveResponse(peripheral: CBPeripheral, characteristic: CBCharacteristic, error: Error?) {
         self.requests.forEach { (request) in
-            if request.characteristicUUID == characteristic.uuid {
+            if let
+                characteristicUUID: CBUUID = request.characteristicUUID,
+                characteristicUUID == characteristic.uuid {
                 if let handler = request.response {
                     DispatchQueue.main.async {
                         handler(peripheral, characteristic, error)
@@ -433,7 +470,7 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         debugPrint("[Bleu Radar] did discover characteristics for service.", peripheral)
         for characteristic in service.characteristics! {
             
-            let characteristicUUIDs: [CBUUID] = self.requests.map({ return $0.characteristicUUID! })
+            let characteristicUUIDs: [CBUUID] = self.requests.flatMap({ return $0.characteristicUUID })
             if characteristicUUIDs.contains(characteristic.uuid) {
                 let properties: CBCharacteristicProperties = characteristic.properties
                 if properties.contains(.notify) {

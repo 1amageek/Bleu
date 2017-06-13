@@ -295,7 +295,9 @@ public class Beacon: NSObject, CBPeripheralManagerDelegate {
     public func peripheralManager(_ peripheral: CBPeripheralManager, didPublishL2CAPChannel PSM: CBL2CAPPSM, error: Error?) {
         debugPrint("[Bleu Beacon] did publish L2CAP channel", peripheral, PSM)
         self.PSM = PSM
-        self.didPublishL2CAPChannelBlock?(peripheral, PSM, error)
+        DispatchQueue.main.async {
+            self.didPublishL2CAPChannelBlock?(peripheral, PSM, error)
+        }
     }
 
     public func peripheralManager(_ peripheral: CBPeripheralManager, didUnpublishL2CAPChannel PSM: CBL2CAPPSM, error: Error?) {

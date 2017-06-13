@@ -7,11 +7,18 @@
 //
 
 import UIKit
+import CoreBluetooth
 
 class L2CAPViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        Bleu.removeAllReceivers()
+
+        Bleu.addReceiver(Receiver(communication: L2CAPID(), get: { [weak self] (manager, request) in
+
+        }))
+        Bleu.startAdvertising()
     }
     @IBAction func publishChannel(_ sender: Any) {
         if #available(iOS 11.0, *) {
@@ -29,6 +36,13 @@ class L2CAPViewController: UIViewController {
     @IBOutlet weak var psmLabel: UILabel!
     
     @IBAction func openChannel(_ sender: Any) {
-        
+        guard let psmStr: String = self.textField.text else {
+            return
+        }
+        let psm: CBL2CAPPSM = CBL2CAPPSM(psmStr)!
+        let request: Request = Request(communication: L2CAPID(), PSM: psm)
+        Bleu.openL2CAPChannel(request) { (pheripheral, error) in
+
+        }
     }
 }
