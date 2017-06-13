@@ -23,6 +23,9 @@ public enum RequestMethod {
     /// Set to receive data from the device to communicate. If you set it to true, you can get notification of value change.
     case broadcast(isNotified: Bool)
 
+    /// L2CAP
+    case stream(withEncryption: Bool)
+
     /// Returns `CBCharacteristicProperties` of CoreBluetooth.
     var properties: CBCharacteristicProperties {
         switch self {
@@ -33,6 +36,8 @@ public enum RequestMethod {
         case .broadcast(let isNotify):
             if isNotify { return [.read, .notify, .broadcast] }
             return [.read, .broadcast]
+        case .stream(withEncryption: _):
+            return []
         }
     }
 
@@ -42,6 +47,7 @@ public enum RequestMethod {
         case .get: return .readable
         case .post: return .writeable
         case .broadcast: return .readable
+        case .stream: return []
         }
     }
 }

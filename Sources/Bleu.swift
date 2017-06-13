@@ -40,7 +40,7 @@ public class Bleu {
     // MARK: -
 
     /// It is a radar for exploring the server.
-    private var radars: Set<Radar> = []
+    internal var radars: Set<Radar> = []
 
     /// Initialize
     public init() {
@@ -76,6 +76,28 @@ public class Bleu {
         if let index: Int = shared.services.index(of: service) {
             shared.services.remove(at: index)
         }
+    }
+
+    // MARK: - L2CAP
+
+    @available(iOS 11.0, *)
+    public class func publishL2CAPChannel(withEncryption: Bool, block: ((CBPeripheralManager, CBL2CAPPSM, Error?) -> Void)?) {
+        let block = block ?? { (peripheralManager, PSM, error) in
+            if let error: Error = error {
+                debugPrint(error)
+                return
+            }
+        }
+        shared.server.publishL2CAPChannel(withEncryption: withEncryption, block: block)
+    }
+
+    @available(iOS 11.0, *)
+    public class func unpublishL2CAPChannel() {
+        shared.server.unpublishL2CAPChannel()
+    }
+
+    public class func openL2CAPChannel(PSM: CBL2CAPPSM) {
+        
     }
 
     // MARK: - Request
@@ -169,6 +191,7 @@ public class Bleu {
                 throw BleuError.invalidPostReceiver
             }
         case .broadcast: break
+        case .stream(_): break
         }
     }
 

@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="12113" systemVersion="16D32" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" colorMatched="YES" initialViewController="r1g-4o-z0y">
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="13122.17" systemVersion="16F73" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" colorMatched="YES" initialViewController="r1g-4o-z0y">
     <device id="retina4_7" orientation="portrait">
         <adaptation id="fullscreen"/>
     </device>
     <dependencies>
         <deployment identifier="iOS"/>
-        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="12078"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="13104.14"/>
         <capability name="Constraints to layout margins" minToolsVersion="6.0"/>
         <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
     </dependencies>
@@ -13,7 +13,7 @@
         <!--View Controller-->
         <scene sceneID="tne-QT-ifu">
             <objects>
-                <viewController id="BYZ-38-t0r" customClass="ViewController" customModule="Bleu" customModuleProvider="target" sceneMemberID="viewController">
+                <viewController id="BYZ-38-t0r" customClass="ViewController" customModule="Sample" customModuleProvider="target" sceneMemberID="viewController">
                     <layoutGuides>
                         <viewControllerLayoutGuide type="top" id="y3c-jy-aDJ"/>
                         <viewControllerLayoutGuide type="bottom" id="wfy-db-euE"/>
@@ -76,7 +76,7 @@
                                             <autoresizingMask key="autoresizingMask"/>
                                             <subviews>
                                                 <label opaque="NO" multipleTouchEnabled="YES" contentMode="left" text="Get - Read" textAlignment="natural" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" id="6hv-NK-M4P">
-                                                    <rect key="frame" x="15" y="0.0" width="325" height="43.5"/>
+                                                    <rect key="frame" x="16" y="0.0" width="324" height="43.5"/>
                                                     <autoresizingMask key="autoresizingMask"/>
                                                     <fontDescription key="fontDescription" type="system" pointSize="17"/>
                                                     <nil key="textColor"/>
@@ -96,7 +96,7 @@
                                             <autoresizingMask key="autoresizingMask"/>
                                             <subviews>
                                                 <label opaque="NO" multipleTouchEnabled="YES" contentMode="left" text="Post - Write" textAlignment="natural" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" id="Vtl-sK-bZ7">
-                                                    <rect key="frame" x="15" y="0.0" width="325" height="43.5"/>
+                                                    <rect key="frame" x="16" y="0.0" width="324" height="43.5"/>
                                                     <autoresizingMask key="autoresizingMask"/>
                                                     <fontDescription key="fontDescription" type="system" pointSize="17"/>
                                                     <nil key="textColor"/>
@@ -116,7 +116,7 @@
                                             <autoresizingMask key="autoresizingMask"/>
                                             <subviews>
                                                 <label opaque="NO" multipleTouchEnabled="YES" contentMode="left" text="Notify" textAlignment="natural" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" id="CQB-Ja-F9X">
-                                                    <rect key="frame" x="15" y="0.0" width="325" height="43.5"/>
+                                                    <rect key="frame" x="16" y="0.0" width="324" height="43.5"/>
                                                     <autoresizingMask key="autoresizingMask"/>
                                                     <fontDescription key="fontDescription" type="system" pointSize="17"/>
                                                     <nil key="textColor"/>
@@ -136,7 +136,7 @@
                                             <autoresizingMask key="autoresizingMask"/>
                                             <subviews>
                                                 <label opaque="NO" multipleTouchEnabled="YES" contentMode="left" text="Broadcast" textAlignment="natural" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" id="v3Q-C5-bMm">
-                                                    <rect key="frame" x="15" y="0.0" width="325" height="43.5"/>
+                                                    <rect key="frame" x="16" y="0.0" width="324" height="43.5"/>
                                                     <autoresizingMask key="autoresizingMask"/>
                                                     <fontDescription key="fontDescription" type="system" pointSize="17"/>
                                                     <nil key="textColor"/>
@@ -146,6 +146,26 @@
                                         </tableViewCellContentView>
                                         <connections>
                                             <segue destination="lOE-9B-xaM" kind="push" id="fI6-ZX-uYr"/>
+                                        </connections>
+                                    </tableViewCell>
+                                    <tableViewCell clipsSubviews="YES" contentMode="scaleToFill" selectionStyle="default" accessoryType="disclosureIndicator" indentationWidth="10" textLabel="FXn-px-R2l" style="IBUITableViewCellStyleDefault" id="xrx-fo-n6c">
+                                        <rect key="frame" x="0.0" y="176" width="375" height="44"/>
+                                        <autoresizingMask key="autoresizingMask"/>
+                                        <tableViewCellContentView key="contentView" opaque="NO" clipsSubviews="YES" multipleTouchEnabled="YES" contentMode="center" tableViewCell="xrx-fo-n6c" id="OIW-oC-8jM">
+                                            <rect key="frame" x="0.0" y="0.0" width="342" height="43.5"/>
+                                            <autoresizingMask key="autoresizingMask"/>
+                                            <subviews>
+                                                <label opaque="NO" multipleTouchEnabled="YES" contentMode="left" text="L2CAP" textAlignment="natural" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" id="FXn-px-R2l">
+                                                    <rect key="frame" x="16" y="0.0" width="324" height="43.5"/>
+                                                    <autoresizingMask key="autoresizingMask"/>
+                                                    <fontDescription key="fontDescription" type="system" pointSize="17"/>
+                                                    <nil key="textColor"/>
+                                                    <nil key="highlightedColor"/>
+                                                </label>
+                                            </subviews>
+                                        </tableViewCellContentView>
+                                        <connections>
+                                            <segue destination="y7j-l7-3mk" kind="show" id="2zU-vb-osQ"/>
                                         </connections>
                                     </tableViewCell>
                                 </cells>
@@ -165,7 +185,7 @@
         <!--Post View Controller-->
         <scene sceneID="5LP-Ex-NCC">
             <objects>
-                <viewController id="5fn-H8-hNV" customClass="PostViewController" customModule="Bleu" customModuleProvider="target" sceneMemberID="viewController">
+                <viewController id="5fn-H8-hNV" customClass="PostViewController" customModule="Sample" customModuleProvider="target" sceneMemberID="viewController">
                     <layoutGuides>
                         <viewControllerLayoutGuide type="top" id="hVC-oG-bmt"/>
                         <viewControllerLayoutGuide type="bottom" id="7oa-Aa-cwq"/>
@@ -237,7 +257,7 @@
         <!--Broadcast View Controller-->
         <scene sceneID="H3f-UE-sTi">
             <objects>
-                <viewController id="lOE-9B-xaM" customClass="BroadcastViewController" customModule="Bleu" customModuleProvider="target" sceneMemberID="viewController">
+                <viewController id="lOE-9B-xaM" customClass="BroadcastViewController" customModule="Sample" customModuleProvider="target" sceneMemberID="viewController">
                     <layoutGuides>
                         <viewControllerLayoutGuide type="top" id="Xnf-ib-dWt"/>
                         <viewControllerLayoutGuide type="bottom" id="sxa-Bu-Cgv"/>
@@ -305,10 +325,72 @@
             </objects>
             <point key="canvasLocation" x="591" y="493"/>
         </scene>
+        <!--View Controller-->
+        <scene sceneID="dkS-SI-bzJ">
+            <objects>
+                <viewController id="y7j-l7-3mk" customClass="L2CAPViewController" customModule="Sample" customModuleProvider="target" sceneMemberID="viewController">
+                    <layoutGuides>
+                        <viewControllerLayoutGuide type="top" id="goZ-7g-XKQ"/>
+                        <viewControllerLayoutGuide type="bottom" id="6mr-Sm-Pyb"/>
+                    </layoutGuides>
+                    <view key="view" contentMode="scaleToFill" id="BRP-bW-YAB">
+                        <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <subviews>
+                            <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="roundedRect" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="AnZ-V8-b0A">
+                                <rect key="frame" x="133.5" y="124" width="108" height="30"/>
+                                <state key="normal" title="Publish channel"/>
+                                <connections>
+                                    <action selector="publishChannel:" destination="y7j-l7-3mk" eventType="touchUpInside" id="PFd-x0-Gst"/>
+                                </connections>
+                            </button>
+                            <textField opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="left" contentVerticalAlignment="center" borderStyle="roundedRect" textAlignment="natural" minimumFontSize="17" translatesAutoresizingMaskIntoConstraints="NO" id="daY-hd-LhM">
+                                <rect key="frame" x="16" y="274" width="343" height="30"/>
+                                <nil key="textColor"/>
+                                <fontDescription key="fontDescription" type="system" pointSize="14"/>
+                                <textInputTraits key="textInputTraits"/>
+                            </textField>
+                            <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="roundedRect" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="Jd3-u5-fvq">
+                                <rect key="frame" x="168" y="322" width="38" height="30"/>
+                                <state key="normal" title="Open"/>
+                                <connections>
+                                    <action selector="openChannel:" destination="y7j-l7-3mk" eventType="touchUpInside" id="zBH-DN-L3d"/>
+                                </connections>
+                            </button>
+                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="---" textAlignment="natural" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="drH-sQ-v5A">
+                                <rect key="frame" x="175.5" y="180" width="23" height="21"/>
+                                <fontDescription key="fontDescription" type="system" pointSize="17"/>
+                                <nil key="textColor"/>
+                                <nil key="highlightedColor"/>
+                            </label>
+                        </subviews>
+                        <color key="backgroundColor" white="1" alpha="1" colorSpace="calibratedWhite"/>
+                        <constraints>
+                            <constraint firstItem="AnZ-V8-b0A" firstAttribute="centerX" secondItem="BRP-bW-YAB" secondAttribute="centerX" id="2UU-Q1-Vyx"/>
+                            <constraint firstAttribute="trailingMargin" secondItem="daY-hd-LhM" secondAttribute="trailing" id="5t1-Rs-ejX"/>
+                            <constraint firstItem="daY-hd-LhM" firstAttribute="centerX" secondItem="BRP-bW-YAB" secondAttribute="centerX" id="7ZR-um-rft"/>
+                            <constraint firstItem="daY-hd-LhM" firstAttribute="top" secondItem="AnZ-V8-b0A" secondAttribute="bottom" constant="120" id="90U-Be-KjU"/>
+                            <constraint firstItem="drH-sQ-v5A" firstAttribute="top" secondItem="AnZ-V8-b0A" secondAttribute="bottom" constant="26" id="BIe-xs-p4X"/>
+                            <constraint firstItem="Jd3-u5-fvq" firstAttribute="top" secondItem="daY-hd-LhM" secondAttribute="bottom" constant="18" id="MCh-sP-bJL"/>
+                            <constraint firstItem="daY-hd-LhM" firstAttribute="leading" secondItem="BRP-bW-YAB" secondAttribute="leadingMargin" id="X7z-Ac-h5j"/>
+                            <constraint firstItem="AnZ-V8-b0A" firstAttribute="top" secondItem="goZ-7g-XKQ" secondAttribute="bottom" constant="60" id="n1v-V2-Ll3"/>
+                            <constraint firstItem="drH-sQ-v5A" firstAttribute="centerX" secondItem="BRP-bW-YAB" secondAttribute="centerX" id="oDP-U2-Emv"/>
+                            <constraint firstItem="Jd3-u5-fvq" firstAttribute="centerX" secondItem="BRP-bW-YAB" secondAttribute="centerX" id="u8E-hy-8nA"/>
+                        </constraints>
+                    </view>
+                    <connections>
+                        <outlet property="psmLabel" destination="drH-sQ-v5A" id="vVG-Vs-YXN"/>
+                        <outlet property="textField" destination="daY-hd-LhM" id="Of3-FO-UTc"/>
+                    </connections>
+                </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="iZe-zk-Hgd" userLabel="First Responder" sceneMemberID="firstResponder"/>
+            </objects>
+            <point key="canvasLocation" x="-1092" y="1020.5397301349326"/>
+        </scene>
         <!--Notify View Controller-->
         <scene sceneID="Wdj-yT-e5t">
             <objects>
-                <viewController id="hub-Gw-8VJ" customClass="NotifyViewController" customModule="Bleu" customModuleProvider="target" sceneMemberID="viewController">
+                <viewController id="hub-Gw-8VJ" customClass="NotifyViewController" customModule="Sample" customModuleProvider="target" sceneMemberID="viewController">
                     <layoutGuides>
                         <viewControllerLayoutGuide type="top" id="pho-Ra-nOd"/>
                         <viewControllerLayoutGuide type="bottom" id="Ktj-yW-Zho"/>
@@ -389,7 +471,7 @@
         <!--Get View Controller-->
         <scene sceneID="j78-Xh-FCN">
             <objects>
-                <viewController id="Uxz-D0-czZ" customClass="GetViewController" customModule="Bleu" customModuleProvider="target" sceneMemberID="viewController">
+                <viewController id="Uxz-D0-czZ" customClass="GetViewController" customModule="Sample" customModuleProvider="target" sceneMemberID="viewController">
                     <layoutGuides>
                         <viewControllerLayoutGuide type="top" id="dkc-B9-SGK"/>
                         <viewControllerLayoutGuide type="bottom" id="MWS-Cu-5oH"/>

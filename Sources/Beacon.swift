@@ -58,6 +58,17 @@ public class Beacon: NSObject, CBPeripheralManagerDelegate {
     /// Callback called when Beacon gets advertisable
     private var startAdvertisingBlock: (([String : Any]?) -> Void)?
 
+    ///
+    private var encryptionRequired: Bool = false
+
+    ///
+    private var PSM: CBL2CAPPSM?
+
+    /// Callback called when Beacon gets publishChannel
+    private var publishL2CAPChannelBlock: ((Bool) -> Void)?
+
+    private var didPublishL2CAPChannelBlock: ((CBPeripheralManager, CBL2CAPPSM, Error?) -> Void)?
+
     /// CBPeripheralManager
     private lazy var peripheralManager: CBPeripheralManager = {
         let options: [String: Any] = [
@@ -82,6 +93,7 @@ public class Beacon: NSObject, CBPeripheralManagerDelegate {
     /// Set service
     private func setup() {
         queue.async { [unowned self] in
+            self.publishL2CAPChannelBlock?(self.encryptionRequired)
             guard let services: [CBMutableService] = self.delegate?.services else {
                 return
             }
@@ -165,6 +177,34 @@ public class Beacon: NSObject, CBPeripheralManagerDelegate {
         self.peripheralManager.stopAdvertising()
     }
 
+    @available(iOS 11.0, *)
+    public func publishL2CAPChannel(withEncryption: Bool, block: ((CBPeripheralManager, CBL2CAPPSM, Error?) -> Void)?) {
+        self.encryptionRequired = withEncryption
+        self.didPublishL2CAPChannelBlock = block
+        _publishL2CAPChannel(withEncryption: withEncryption)
+    }
+
+    @available(iOS 11.0, *)
+    private func _publishL2CAPChannel(withEncryption: Bool) {
+        queue.async { [unowned self] in
+            self.publishL2CAPChannelBlock = { [unowned self] (encryptionRequired) in
+                self.peripheralManager.publishL2CAPChannel(withEncryption: encryptionRequired)
+                debugPrint("[Bleu Beacon] Beacon has open publish withEncryption \(encryptionRequired).")
+            }
+            if self.canStartAdvertising {
+                self.publishL2CAPChannelBlock?(withEncryption)
+            }
+        }
+    }
+
+    @available(iOS 11.0, *)
+    public func unpublishL2CAPChannel() {
+        guard let PSM: CBL2CAPPSM = self.PSM else {
+            return
+        }
+        self.peripheralManager.unpublishL2CAPChannel(PSM)
+    }
+
     /**
      Update the value of characteristic.
 
@@ -243,5 +283,22 @@ public class Beacon: NSObject, CBPeripheralManagerDelegate {
     public func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {
         debugPrint("[Bleu Beacon] did receive write", peripheral, requests)
         self.delegate?.post(peripheralManager: peripheral, requests: requests)
+    }
+
+    // MARK: - L2CAP
+
+    @available(iOS 11.0, *)
+    public func peripheralManager(_ peripheral: CBPeripheralManager, didOpen channel: CBL2CAPChannel?, error: Error?) {
+        debugPrint("[Bleu Beacon] didOpen channel", peripheral, channel ?? "")
+    }
+
+    public func peripheralManager(_ peripheral: CBPeripheralManager, didPublishL2CAPChannel PSM: CBL2CAPPSM, error: Error?) {
+        debugPrint("[Bleu Beacon] did publish L2CAP channel", peripheral, PSM)
+        self.PSM = PSM
+        self.didPublishL2CAPChannelBlock?(peripheral, PSM, error)
+    }
+
+    public func peripheralManager(_ peripheral: CBPeripheralManager, didUnpublishL2CAPChannel PSM: CBL2CAPPSM, error: Error?) {
+        debugPrint("[Bleu Beacon] did unpublish L2CAP channel", peripheral, PSM)
     }
 }

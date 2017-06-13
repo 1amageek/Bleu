@@ -70,7 +70,7 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     }()
     
     /// Queue
-    private let queue: DispatchQueue = DispatchQueue(label: "bleu.radar.queue")
+    internal let queue: DispatchQueue = DispatchQueue(label: "bleu.radar.queue")
     
     /// Discoverd peripherals
     private(set) var discoveredPeripherals: Set<CBPeripheral> = []
@@ -183,7 +183,7 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     @objc func applicationWillResignActive() {
         // TODO:
     }
-    
+
     // MARK: -
 
     /// Radar is scanning
@@ -274,6 +274,9 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             }
         } else {
             self.centralManager.connect(peripheral, options: nil)
+//            if #available(iOS 11.0, *) {
+//                peripheral.openL2CAPChannel(<#T##PSM: CBL2CAPPSM##CBL2CAPPSM#>)
+//            }
         }
         debugPrint("[Bleu Radar] discover peripheral. ", peripheral, RSSI)
     }
@@ -389,9 +392,8 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         self.completionHandler?(self.completedRequests, nil)
         
     }
-    
-    // MARK: -
-    // MARK: Serivce
+
+    // MARK: - CBPeripheralDelegate
     
     public func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         debugPrint("[Bleu Radar] did discover service. peripheral", peripheral, error ?? "")
@@ -478,7 +480,13 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     public func peripheral(_ peripheral: CBPeripheral, didWriteValueFor descriptor: CBDescriptor, error: Error?) {
         debugPrint("[Bleu Radar] did write value for descriptor", peripheral, descriptor)
     }
-    
+
+    // MARK: - L2CAP
+
+    @available(iOS 11.0, *)
+    public func peripheral(_ peripheral: CBPeripheral, didOpen channel: CBL2CAPChannel?, error: Error?) {
+        debugPrint("[Bleu Radar] did open channel", peripheral, channel ?? "")
+    }
     
     // MARK: -
     

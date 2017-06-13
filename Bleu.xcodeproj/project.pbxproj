@@ -7,10 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		1212D03F1EEFCEA900024269 /* L2CAPViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1212D03E1EEFCEA900024269 /* L2CAPViewController.swift */; };
 		1260BB9E1E7D705000187496 /* Communicable+.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12AD07011E7943CF007D5311 /* Communicable+.swift */; };
 		1261C4521E86541900E53D04 /* Radar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1261C4511E86541900E53D04 /* Radar.swift */; };
 		1261C4531E86541900E53D04 /* Radar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1261C4511E86541900E53D04 /* Radar.swift */; };
 		1264FA331E7FC088005DCC2E /* BeaconViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1264FA321E7FC088005DCC2E /* BeaconViewController.swift */; };
+		129FE5D21EED0F8600934B95 /* Streamer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 129FE5D11EED0F8600934B95 /* Streamer.swift */; };
 		12AD06D91E794054007D5311 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12AD06D81E794054007D5311 /* AppDelegate.swift */; };
 		12AD06E01E794054007D5311 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 12AD06DF1E794054007D5311 /* Assets.xcassets */; };
 		12AD06E31E794054007D5311 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 12AD06E11E794054007D5311 /* LaunchScreen.storyboard */; };
@@ -33,9 +35,11 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		1212D03E1EEFCEA900024269 /* L2CAPViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = L2CAPViewController.swift; sourceTree = "<group>"; };
 		125FA7C61E7631B600DC0D62 /* Bleu.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Bleu.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1261C4511E86541900E53D04 /* Radar.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = Radar.swift; path = ../Sources/Radar.swift; sourceTree = "<group>"; };
 		1264FA321E7FC088005DCC2E /* BeaconViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BeaconViewController.swift; sourceTree = "<group>"; };
+		129FE5D11EED0F8600934B95 /* Streamer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Streamer.swift; sourceTree = "<group>"; };
 		12AD06D61E794054007D5311 /* Sample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Sample.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		12AD06D81E794054007D5311 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		12AD06DF1E794054007D5311 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -100,6 +104,7 @@
 				12AD06F71E794397007D5311 /* Communicable.swift */,
 				12AD06F81E794397007D5311 /* Receiver.swift */,
 				12AD06F91E794397007D5311 /* Request.swift */,
+				129FE5D11EED0F8600934B95 /* Streamer.swift */,
 			);
 			path = Bleu;
 			sourceTree = "<group>";
@@ -114,6 +119,7 @@
 				12AD07071E7943D6007D5311 /* PostViewController.swift */,
 				12AD07001E7943CF007D5311 /* BroadcastViewController.swift */,
 				1264FA321E7FC088005DCC2E /* BeaconViewController.swift */,
+				1212D03E1EEFCEA900024269 /* L2CAPViewController.swift */,
 				12AD07081E7943D6007D5311 /* ViewController.swift */,
 				12AD06DF1E794054007D5311 /* Assets.xcassets */,
 				12AD070C1E79441E007D5311 /* Main.storyboard */,
@@ -183,6 +189,7 @@
 					12AD06D51E794054007D5311 = {
 						CreatedOnToolsVersion = 8.3;
 						DevelopmentTeam = 88ACA86N96;
+						LastSwiftMigration = 0900;
 						ProvisioningStyle = Automatic;
 						SystemCapabilities = {
 							com.apple.BackgroundModes = {
@@ -236,6 +243,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				129FE5D21EED0F8600934B95 /* Streamer.swift in Sources */,
 				12AD06FF1E794397007D5311 /* Request.swift in Sources */,
 				12AD06FD1E794397007D5311 /* Communicable.swift in Sources */,
 				12AD06FC1E794397007D5311 /* Bleu.swift in Sources */,
@@ -261,6 +269,7 @@
 				1261C4531E86541900E53D04 /* Radar.swift in Sources */,
 				12AD07101E794442007D5311 /* Beacon.swift in Sources */,
 				1264FA331E7FC088005DCC2E /* BeaconViewController.swift in Sources */,
+				1212D03F1EEFCEA900024269 /* L2CAPViewController.swift in Sources */,
 				12AD06D91E794054007D5311 /* AppDelegate.swift in Sources */,
 				1260BB9E1E7D705000187496 /* Communicable+.swift in Sources */,
 			);
@@ -416,7 +425,8 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = inc.stamp.Bleu;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_VERSION = 3.0;
+				SWIFT_SWIFT3_OBJC_INFERENCE = On;
+				SWIFT_VERSION = 4.0;
 			};
 			name = Debug;
 		};
@@ -429,7 +439,8 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = inc.stamp.Bleu;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_VERSION = 3.0;
+				SWIFT_SWIFT3_OBJC_INFERENCE = On;
+				SWIFT_VERSION = 4.0;
 			};
 			name = Release;
 		};

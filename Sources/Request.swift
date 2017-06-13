@@ -28,7 +28,7 @@ public class Request: Communicable {
     /// CoreBluetooth characteristic UUID
     public let characteristicUUID: CBUUID?
 
-    /// CoreBluetooth characteristic UUID
+    /// CoreBluetooth characteristic
     public let characteristic: CBMutableCharacteristic
 
     /// CoreBluetooth options
@@ -39,6 +39,9 @@ public class Request: Communicable {
 
     /// Callback to process the received response
     public var response: ResponseHandler?
+
+    ///
+    public var PSM: CBL2CAPPSM?
 
     /**
      It communicates with the server with the method defined by Communicable.
