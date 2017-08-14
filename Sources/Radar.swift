@@ -144,7 +144,13 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
 
     /// Request completed communication.
     private var completedRequests: [CBPeripheral: Set<Request>] = [:]
-    
+
+//    public var PSM: CBL2CAPPSM?
+//
+//    internal var didOpenChannelBlock: ((CBPeripheral, CBL2CAPChannel?, Error?) -> Void)?
+//
+//    private(set) var channel: CBL2CAPChannel?
+
     // MARK: -
 
     /**
@@ -386,7 +392,7 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     
     private func checkScanCompleted() {
         debugPrint("[Bleu Radar] Check scan completed. connected peripherals count: \(self.connectedPeripherals.count)")
-        if self.connectedPeripherals.count == 0 {
+        if self.connectedPeripherals.isEmpty {
             self.stopScan(cleaned: true)
             self.completion()
         }
@@ -493,3 +499,14 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         debugPrint("connectedPeripherals ", self.connectedPeripherals)
     }
 }
+//
+//extension Radar {
+//    public func open(_ block: ((CBPeripheral, CBL2CAPChannel?, Error?) -> Void)?) {
+//        self.didOpenChannelBlock = block
+//        guard let psm: CBL2CAPPSM = self.PSM else { return }
+//        self.connectedPeripherals.forEach { (peripheral) in
+//            peripheral.openL2CAPChannel(psm)
+//        }
+//    }
+//}
+

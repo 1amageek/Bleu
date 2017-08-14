@@ -9,8 +9,7 @@
 import Foundation
 import CoreBluetooth
 
-@available(iOS 11.0, *)
-public class Streamer: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
+public class Streamer: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate, StreamDelegate {
 
     public enum StreamerError: Error {
         case timeout
@@ -120,7 +119,9 @@ public class Streamer: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate 
 
     private(set) var PSM: CBL2CAPPSM?
 
-    internal var didOpenChannelBlock: ((CBPeripheral, CBL2CAPChannel?, Error?) -> Void)?
+    private(set) var channels: Set<CBL2CAPChannel> = []
+
+    public var didOpenChannelBlock: ((CBPeripheral, CBL2CAPChannel?, Error?) -> Void)?
 
     // MARK: -
 
@@ -187,10 +188,10 @@ public class Streamer: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate 
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(self.timeout)) { [weak self] in
-            guard let strongSelf = self else {
+            guard let `self` = self else {
                 return
             }
-            if !strongSelf.centralManager.isScanning {
+            if !self.centralManager.isScanning {
                 return
             }
 //            strongSelf.stopScan(cleaned: true)
@@ -239,6 +240,9 @@ public class Streamer: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate 
         }
     }
 
+    /**
+     PSMがあってもDiscoverして接続先を検出しないと接続できない
+     */
     public func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
         self.discoveredPeripherals.insert(peripheral)
         if self.allowDuplicates {
@@ -254,9 +258,7 @@ public class Streamer: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate 
     }
 
     public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-        let serviceUUIDs: [CBUUID] = [self.serviceUUID]
         peripheral.delegate = self
-        peripheral.discoverServices(serviceUUIDs)
         self.connectedPeripherals.insert(peripheral)
         debugPrint("[Bleu Streamer] did connect peripheral. ", peripheral)
         if let PSM: CBL2CAPPSM = self.PSM {
@@ -308,7 +310,26 @@ public class Streamer: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate 
 
     public func peripheral(_ peripheral: CBPeripheral, didOpen channel: CBL2CAPChannel?, error: Error?) {
         debugPrint("[Bleu Streamer] did open channel", peripheral, channel ?? "", error ?? "")
-        self.didOpenChannelBlock?(peripheral, channel, error)
+        if let channel: CBL2CAPChannel = channel {
+//            channel.inputStream.delegate = self
+            channel.outputStream.delegate = self
+            self.channels.insert(channel)
+        }
+        DispatchQueue.main.async { [weak self] in
+            self?.didOpenChannelBlock?(peripheral, channel, error)
+        }
+    }
+
+    // MARK: - StreamDelegate
+
+    private var _streamHandler: ((Stream, Stream.Event) -> Void)?
+
+    public func on(_ handler: @escaping (Stream, Stream.Event) -> Void) {
+        self._streamHandler = handler
+    }
+
+    public func stream(_ aStream: Stream, handle eventCode: Stream.Event) {
+        self._streamHandler?(aStream, eventCode)
     }
 
     // MARK: -

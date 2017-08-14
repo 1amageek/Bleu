@@ -12,7 +12,6 @@ import CoreBluetooth
 /**
  Beacons control the CBPeripheralManager.
  */
-@available(iOS 11.0, *)
 public class Beacon: NSObject, CBPeripheralManagerDelegate {
 
     weak var delegate: BleuServerDelegate?
@@ -180,14 +179,12 @@ public class Beacon: NSObject, CBPeripheralManagerDelegate {
         self.peripheralManager.stopAdvertising()
     }
 
-    @available(iOS 11.0, *)
     public func publishL2CAPChannel(withEncryption: Bool, block: ((CBPeripheralManager, CBL2CAPPSM, Error?) -> Void)?) {
         self.encryptionRequired = withEncryption
         self.didPublishL2CAPChannelBlock = block
         _publishL2CAPChannel(withEncryption: withEncryption)
     }
 
-    @available(iOS 11.0, *)
     private func _publishL2CAPChannel(withEncryption: Bool) {
         queue.async { [unowned self] in
             self.publishL2CAPChannelBlock = { [unowned self] (encryptionRequired) in
@@ -200,7 +197,6 @@ public class Beacon: NSObject, CBPeripheralManagerDelegate {
         }
     }
 
-    @available(iOS 11.0, *)
     public func unpublishL2CAPChannel() {
         guard let PSM: CBL2CAPPSM = self.PSM else {
             return
@@ -290,7 +286,6 @@ public class Beacon: NSObject, CBPeripheralManagerDelegate {
 
     // MARK: - L2CAP
 
-    @available(iOS 11.0, *)
     public func peripheralManager(_ peripheral: CBPeripheralManager, didOpen channel: CBL2CAPChannel?, error: Error?) {
         debugPrint("[Bleu Beacon] didOpen channel", peripheral, channel ?? "")
         DispatchQueue.main.async {

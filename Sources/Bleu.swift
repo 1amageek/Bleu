@@ -42,7 +42,7 @@ public class Bleu {
     /// It is a radar for exploring the server.
     private(set) var radars: Set<Radar> = []
 
-    private(set) var streamers: Set<NSObject> = []
+    private(set) var streamers: Set<Streamer> = []
 
     /// Initialize
     public init() {
@@ -82,7 +82,6 @@ public class Bleu {
 
     // MARK: - L2CAP
 
-    @available(iOS 11.0, *)
     public class func publishL2CAPChannel(withEncryption: Bool, block: ((CBPeripheralManager, CBL2CAPPSM, Error?) -> Void)?) {
         let block = block ?? { (peripheralManager, PSM, error) in
             if let error: Error = error {
@@ -93,20 +92,20 @@ public class Bleu {
         shared.server.publishL2CAPChannel(withEncryption: withEncryption, block: block)
     }
 
-    @available(iOS 11.0, *)
     public class func unpublishL2CAPChannel() {
         shared.server.unpublishL2CAPChannel()
     }
 
     // MARK: - Open L2CAPChannel
-    @available(iOS 11.0, *)
     @discardableResult
-    public class func openL2CAPChannel(_ request: Request, options: Streamer.Options = Streamer.Options(), completionBlock: (([CBPeripheral: Set<Request>], Error?) -> Void)?) -> Streamer? {
+    public class func openL2CAPChannel(_ request: Request,
+                                       options: Streamer.Options = Streamer.Options(),
+                                       completionBlock: (([CBPeripheral: Set<Request>], Error?) -> Void)?) -> Streamer {
         let streamer = Streamer(request: request, options: options)
         shared.streamers.insert(streamer)
-        streamer.didOpenChannelBlock = { (peripheral, PSM, error) in
-            
-        }
+//        streamer.didOpenChannelBlock = { (peripheral, PSM, error) in
+//            completionBlock?([peripheral: [request]], error)
+//        }
         streamer.resume()
         return streamer
     }
