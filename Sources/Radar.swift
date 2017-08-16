@@ -19,7 +19,6 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         case timeout
         case canceled
         case invalidRequest
-        
         public var localizedDescription: String {
             switch self {
             case .timeout: return "[Bleu Radar] *** Error: Scanning timeout."
@@ -145,10 +144,10 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     /// Request completed communication.
     private var completedRequests: [CBPeripheral: Set<Request>] = [:]
 
-//    public var PSM: CBL2CAPPSM?
-//
-//    internal var didOpenChannelBlock: ((CBPeripheral, CBL2CAPChannel?, Error?) -> Void)?
-//
+    private(set) var psm: CBL2CAPPSM?
+
+    internal var didOpenChannelBlock: ((Streamer?, Error?) -> Void)?
+
 //    private(set) var channel: CBL2CAPChannel?
 
     // MARK: -
@@ -161,18 +160,25 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
      */
     public init(requests: [Request], options: Options) {
         super.init()
-        
+        self.setup(requests: requests, options: options)
+    }
+
+    public init(psm: CBL2CAPPSM, options: Options) {
+        super.init()
+        self.psm = psm
+        self.setup(requests: requests, options: options)
+    }
+
+    private func setup(requests: [Request] = [], options: Options) {
         var scanOptions: [String: Any] = [:]
         let serviceUUIDs: [CBUUID] = requests.map({ return $0.serviceUUID })
         scanOptions[CBCentralManagerScanOptionSolicitedServiceUUIDsKey] = serviceUUIDs
         scanOptions[CBCentralManagerScanOptionAllowDuplicatesKey] = options.allowDuplicatesKey
         self.restoreIdentifierKey = options.restoreIdentifierKey
         self.showPowerAlert = options.showPowerAlertKey
-        
         self.scanOptions = scanOptions
         self.radarOptions = options
         self.requests = requests
-        
         NotificationCenter.default.addObserver(self, selector: #selector(applicationDidEnterBackground), name: NSNotification.Name.UIApplicationDidEnterBackground, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(applicationWillResignActive), name: NSNotification.Name.UIApplicationDidBecomeActive, object: nil)
     }
@@ -215,17 +221,17 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         }
         
         DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(self.timeout)) { [weak self] in
-            guard let strongSelf = self else {
+            guard let `self` = self else {
                 return
             }
-            if !strongSelf.centralManager.isScanning {
+            if !self.centralManager.isScanning {
                 return
             }
-            if strongSelf.isNotifying && strongSelf.connectedPeripherals.count > 0 {
+            if self.isNotifying && self.connectedPeripherals.count > 0 {
                 return
             }
-            strongSelf.stopScan(cleaned: true)
-            strongSelf.completionHandler?(strongSelf.completedRequests, RadarError.timeout)
+            self.stopScan(cleaned: true)
+            self.completionHandler?(self.completedRequests, RadarError.timeout)
         }
     }
 
@@ -285,11 +291,20 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     }
     
     public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-        let serviceUUIDs: [CBUUID] = self.serviceUUIDs
-        peripheral.delegate = self
-        peripheral.discoverServices(serviceUUIDs)
-        self.connectedPeripherals.insert(peripheral)
         debugPrint("[Bleu Radar] did connect peripheral. ", peripheral)
+
+        // Set delegate,
+        peripheral.delegate = self
+        self.connectedPeripherals.insert(peripheral)
+        if let psm: CBL2CAPPSM = self.psm {
+            peripheral.openL2CAPChannel(psm)
+            stopScan(cleaned: false)
+            debugPrint("[Bleu Radar] open channel peripheral. ", peripheral, psm)
+        } else {
+            let serviceUUIDs: [CBUUID] = self.serviceUUIDs
+            peripheral.discoverServices(serviceUUIDs)
+        }
+
     }
     
     public func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
@@ -305,6 +320,22 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     
     public func centralManager(_ central: CBCentralManager, willRestoreState dict: [String : Any]) {
         //let peripherals: [CBPeripheral] = dict[CBAdvertisementDataLocalNameKey]
+    }
+
+    // MARK: L2CAP
+
+    public func peripheral(_ peripheral: CBPeripheral, didOpen channel: CBL2CAPChannel?, error: Error?) {
+        debugPrint("[Bleu Streamer] did open channel", peripheral, channel ?? "", error ?? "")
+        guard let channel: CBL2CAPChannel = channel else {
+            DispatchQueue.main.async { [weak self] in
+                self?.didOpenChannelBlock?(nil, error)
+            }
+            return
+        }
+        let streamer: Streamer = Streamer(peripheral: peripheral, channel: channel)
+        DispatchQueue.main.async { [weak self] in
+            self?.didOpenChannelBlock?(streamer, error)
+        }
     }
 
     // MARK: -
@@ -499,14 +530,3 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         debugPrint("connectedPeripherals ", self.connectedPeripherals)
     }
 }
-//
-//extension Radar {
-//    public func open(_ block: ((CBPeripheral, CBL2CAPChannel?, Error?) -> Void)?) {
-//        self.didOpenChannelBlock = block
-//        guard let psm: CBL2CAPPSM = self.PSM else { return }
-//        self.connectedPeripherals.forEach { (peripheral) in
-//            peripheral.openL2CAPChannel(psm)
-//        }
-//    }
-//}
-

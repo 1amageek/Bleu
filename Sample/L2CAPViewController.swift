@@ -51,32 +51,21 @@ class L2CAPViewController: UIViewController, StreamDelegate {
             let text: String = String(data: data, encoding: .utf8)!
             self.textField.text = text
             let psm: CBL2CAPPSM = CBL2CAPPSM(text)!
-            let request: Request = Request(communication: L2CAPID(), PSM: psm)
 
-            let streamer: Streamer = Bleu.openL2CAPChannel(request) { (peripheralRequests, error) in
+            Bleu.openL2CAPChannel(psm, didOpenChannelBlock: { (streamer, error) in
                 if let error = error {
                     debugPrint(error)
                     return
                 }
-                print("!!!!!!Completed", peripheralRequests)
-            }
-            streamer.didOpenChannelBlock = { (peripheral, channel, error) in
-                if let error = error {
-                    debugPrint(error)
-                    return
-                }
-                channel?.outputStream.delegate = self
-                channel?.inputStream.delegate = self
-                print("Did Open !!!!")
-                print("Input !", channel?.inputStream)
-                print("Output!", channel?.outputStream)
-                let runloop: RunLoop = RunLoop.current
-                channel?.outputStream.schedule(in: runloop, forMode: RunLoopMode.defaultRunLoopMode)
-                channel?.outputStream.open()
-            }
-            streamer.on({ (steam, event) in
+
+                print(streamer!)
+                streamer?.on({ (steam, event) in
+
+                    print("stream !!!!")
+                })
 
             })
+
         }
         Bleu.send([request]) { completedRequests, error in
             if error != nil {

@@ -98,17 +98,28 @@ public class Bleu {
 
     // MARK: - Open L2CAPChannel
     @discardableResult
-    public class func openL2CAPChannel(_ request: Request,
-                                       options: Streamer.Options = Streamer.Options(),
-                                       completionBlock: (([CBPeripheral: Set<Request>], Error?) -> Void)?) -> Streamer {
-        let streamer = Streamer(request: request, options: options)
-        shared.streamers.insert(streamer)
-//        streamer.didOpenChannelBlock = { (peripheral, PSM, error) in
-//            completionBlock?([peripheral: [request]], error)
-//        }
-        streamer.resume()
-        return streamer
+    public class func openL2CAPChannel(_ psm: CBL2CAPPSM,
+                                       options: Radar.Options = Radar.Options(),
+                                       didOpenChannelBlock: ((Streamer?, Error?) -> Void)?) -> Radar {
+        let radar: Radar = Radar(psm: psm, options: options)
+        shared.radars.insert(radar)
+        radar.didOpenChannelBlock = didOpenChannelBlock
+        radar.resume()
+        return radar
     }
+
+//    @discardableResult
+//    public class func openL2CAPChannel(_ request: Request,
+//                                       options: Streamer.Options = Streamer.Options(),
+//                                       completionBlock: (([CBPeripheral: Set<Request>], Error?) -> Void)?) -> Streamer {
+//        let streamer = Streamer(request: request, options: options)
+//        shared.streamers.insert(streamer)
+////        streamer.didOpenChannelBlock = { (peripheral, PSM, error) in
+////            completionBlock?([peripheral: [request]], error)
+////        }
+//        streamer.resume()
+//        return streamer
+//    }
 
     // MARK: - Request
 
