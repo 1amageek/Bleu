@@ -362,6 +362,13 @@
                                 <nil key="textColor"/>
                                 <nil key="highlightedColor"/>
                             </label>
+                            <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="roundedRect" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="u0q-SO-GOp">
+                                <rect key="frame" x="165" y="360" width="44" height="30"/>
+                                <state key="normal" title="Check"/>
+                                <connections>
+                                    <action selector="checkAction:" destination="y7j-l7-3mk" eventType="touchUpInside" id="q4m-jI-3aC"/>
+                                </connections>
+                            </button>
                         </subviews>
                         <color key="backgroundColor" white="1" alpha="1" colorSpace="calibratedWhite"/>
                         <constraints>
@@ -370,8 +377,10 @@
                             <constraint firstItem="daY-hd-LhM" firstAttribute="centerX" secondItem="BRP-bW-YAB" secondAttribute="centerX" id="7ZR-um-rft"/>
                             <constraint firstItem="daY-hd-LhM" firstAttribute="top" secondItem="AnZ-V8-b0A" secondAttribute="bottom" constant="120" id="90U-Be-KjU"/>
                             <constraint firstItem="drH-sQ-v5A" firstAttribute="top" secondItem="AnZ-V8-b0A" secondAttribute="bottom" constant="26" id="BIe-xs-p4X"/>
+                            <constraint firstItem="u0q-SO-GOp" firstAttribute="top" secondItem="Jd3-u5-fvq" secondAttribute="bottom" constant="8" id="GZw-JM-Ozq"/>
                             <constraint firstItem="Jd3-u5-fvq" firstAttribute="top" secondItem="daY-hd-LhM" secondAttribute="bottom" constant="18" id="MCh-sP-bJL"/>
                             <constraint firstItem="daY-hd-LhM" firstAttribute="leading" secondItem="BRP-bW-YAB" secondAttribute="leadingMargin" id="X7z-Ac-h5j"/>
+                            <constraint firstItem="u0q-SO-GOp" firstAttribute="centerX" secondItem="BRP-bW-YAB" secondAttribute="centerX" id="gqd-Or-K7N"/>
                             <constraint firstItem="AnZ-V8-b0A" firstAttribute="top" secondItem="goZ-7g-XKQ" secondAttribute="bottom" constant="60" id="n1v-V2-Ll3"/>
                             <constraint firstItem="drH-sQ-v5A" firstAttribute="centerX" secondItem="BRP-bW-YAB" secondAttribute="centerX" id="oDP-U2-Emv"/>
                             <constraint firstItem="Jd3-u5-fvq" firstAttribute="centerX" secondItem="BRP-bW-YAB" secondAttribute="centerX" id="u8E-hy-8nA"/>

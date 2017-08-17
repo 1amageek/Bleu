@@ -111,12 +111,12 @@ public class Bleu {
 //    @discardableResult
 //    public class func openL2CAPChannel(_ request: Request,
 //                                       options: Streamer.Options = Streamer.Options(),
-//                                       completionBlock: (([CBPeripheral: Set<Request>], Error?) -> Void)?) -> Streamer {
+//                                       completionBlock: ((CBPeripheral, CBL2CAPChannel?, Error?) -> Void)?) -> Streamer {
 //        let streamer = Streamer(request: request, options: options)
 //        shared.streamers.insert(streamer)
-////        streamer.didOpenChannelBlock = { (peripheral, PSM, error) in
-////            completionBlock?([peripheral: [request]], error)
-////        }
+//        streamer.didOpenChannelBlock = { (peripheral, channel, error) in
+//            completionBlock?(peripheral, channel, error)
+//        }
 //        streamer.resume()
 //        return streamer
 //    }

@@ -62,14 +62,16 @@ public class Beacon: NSObject, CBPeripheralManagerDelegate {
     private var encryptionRequired: Bool = false
 
     ///
-    private var PSM: CBL2CAPPSM?
+    private(set) var psm: CBL2CAPPSM?
+
+    private(set) var streamer: Streamer?
 
     /// Callback called when Beacon gets publishChannel
     private var publishL2CAPChannelBlock: ((Bool) -> Void)?
 
     private var didPublishL2CAPChannelBlock: ((CBPeripheralManager, CBL2CAPPSM, Error?) -> Void)?
 
-    private var didOpenChannelBlock: ((CBPeripheralManager, CBL2CAPChannel?, Error?) -> Void)?
+    private var didOpenChannelBlock: ((Streamer?, Error?) -> Void)?
 
     /// CBPeripheralManager
     private lazy var peripheralManager: CBPeripheralManager = {
@@ -198,10 +200,10 @@ public class Beacon: NSObject, CBPeripheralManagerDelegate {
     }
 
     public func unpublishL2CAPChannel() {
-        guard let PSM: CBL2CAPPSM = self.PSM else {
+        guard let psm: CBL2CAPPSM = self.psm else {
             return
         }
-        self.peripheralManager.unpublishL2CAPChannel(PSM)
+        self.peripheralManager.unpublishL2CAPChannel(psm)
     }
 
     /**
@@ -288,14 +290,22 @@ public class Beacon: NSObject, CBPeripheralManagerDelegate {
 
     public func peripheralManager(_ peripheral: CBPeripheralManager, didOpen channel: CBL2CAPChannel?, error: Error?) {
         debugPrint("[Bleu Beacon] didOpen channel", peripheral, channel ?? "")
-        DispatchQueue.main.async {
-            self.didOpenChannelBlock?(peripheral, channel, error)
+        guard let channel: CBL2CAPChannel = channel else {
+            DispatchQueue.main.async { [weak self] in
+                self?.didOpenChannelBlock?(nil, error)
+            }
+            return
+        }
+        let streamer: Streamer = Streamer(channel: channel, peripheralManager: peripheral)
+        self.streamer = streamer
+        DispatchQueue.main.async { [weak self] in
+            self?.didOpenChannelBlock?(streamer, error)
         }
     }
 
     public func peripheralManager(_ peripheral: CBPeripheralManager, didPublishL2CAPChannel PSM: CBL2CAPPSM, error: Error?) {
         debugPrint("[Bleu Beacon] did publish L2CAP channel", peripheral, PSM)
-        self.PSM = PSM
+        self.psm = PSM
         DispatchQueue.main.async {
             self.didPublishL2CAPChannelBlock?(peripheral, PSM, error)
         }

@@ -39,6 +39,16 @@ class L2CAPViewController: UIViewController, StreamDelegate {
     @IBOutlet weak var textField: UITextField!
     @IBOutlet weak var psmLabel: UILabel!
 
+    var psm: CBL2CAPPSM?
+
+    var radar: Radar?
+
+    var channel: CBL2CAPChannel?
+
+    var peripheral: CBPeripheral?
+
+    var streamer: Streamer?
+
     @IBAction func openChannel(_ sender: Any) {
 
         let request: Request = Request(communication: GetUserID()) { (peripheral, characteristic, error) in
@@ -51,28 +61,74 @@ class L2CAPViewController: UIViewController, StreamDelegate {
             let text: String = String(data: data, encoding: .utf8)!
             self.textField.text = text
             let psm: CBL2CAPPSM = CBL2CAPPSM(text)!
+            self.psm = psm
+//            self.radar = Bleu.openL2CAPChannel(psm, didOpenChannelBlock: { (streamer, error) in
+//                if let error = error {
+//                    debugPrint(error)
+//                    return
+//                }
+//
+//                streamer?.on({ (steam, event) in
+//
+//                    print("stream !!!!")
+//                })
+//                streamer?.open()
+////                let text: String = "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+////                let data: Data = text.data(using: .utf8)!
+////                let bytesWritten = data.withUnsafeBytes { streamer?.outputStream.write($0, maxLength: data.count) }
+//
+//            })
 
-            Bleu.openL2CAPChannel(psm, didOpenChannelBlock: { (streamer, error) in
-                if let error = error {
-                    debugPrint(error)
-                    return
-                }
-
-                print(streamer!)
-                streamer?.on({ (steam, event) in
-
-                    print("stream !!!!")
-                })
-
-            })
-
+//            let request: Request = Request(communication: L2CAPID(), PSM: psm)
+//            Bleu.openL2CAPChannel(request, completionBlock: { (peripheral, channel, error) in
+//                if let error = error {
+//                    debugPrint(error)
+//                    return
+//                }
+//                channel?.outputStream.delegate = self
+//                channel?.outputStream.schedule(in: RunLoop.current, forMode: .defaultRunLoopMode)
+//                self.channel = channel
+//                self.peripheral = peripheral
+//            })
         }
         Bleu.send([request]) { completedRequests, error in
             if error != nil {
                 print("timeout")
             }
+            print("!!!!!!!!!!!!!!!!!!!!!!!!")
+            guard let psm: CBL2CAPPSM = self.psm else { return }
+            let radar: Radar = Radar(psm: psm, options: Radar.Options())
+            self.radar = radar
+            radar.didOpenChannelBlock = { streamer, error in
+                if let error = error {
+                    print("!!!!!" , error)
+                    return
+                }
+                print(streamer!)
+                self.streamer = streamer
+                streamer?.open()
+            }
+            radar.resume()
+
+//            Bleu.openL2CAPChannel(psm, didOpenChannelBlock: { (streamer, error) in
+//                if let error = error {
+//                    print("!!!!!" , error)
+//                    return
+//                }
+//                self.streamer = streamer
+//                streamer?.open()
+//            })
+
         }
 
+    }
+    
+    @IBAction func checkAction(_ sender: Any) {
+//        print(self.radar)
+//        print(self.radar?.streamer)
+//        print(self.radar?.streamer?.channel)
+//        print(self.radar?.streamer?.channel.outputStream.streamStatus)
+//        print(self.radar?.streamer?.channel.outputStream.streamError)
     }
 
     func stream(_ aStream: Stream, handle eventCode: Stream.Event) {

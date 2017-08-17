@@ -146,9 +146,11 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
 
     private(set) var psm: CBL2CAPPSM?
 
+    private(set) var streamer: Streamer?
+
     internal var didOpenChannelBlock: ((Streamer?, Error?) -> Void)?
 
-//    private(set) var channel: CBL2CAPChannel?
+//    internal var didOpenChannelBlock: ((CBPeripheral, CBL2CAPChannel?, Error?) -> Void)?
 
     // MARK: -
 
@@ -166,10 +168,11 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     public init(psm: CBL2CAPPSM, options: Options) {
         super.init()
         self.psm = psm
-        self.setup(requests: requests, options: options)
+        self.setup(requests: [], options: options)
     }
 
     private func setup(requests: [Request] = [], options: Options) {
+        debugPrint("[Bleu Radar] setup", self)
         var scanOptions: [String: Any] = [:]
         let serviceUUIDs: [CBUUID] = requests.map({ return $0.serviceUUID })
         scanOptions[CBCentralManagerScanOptionSolicitedServiceUUIDsKey] = serviceUUIDs
@@ -184,7 +187,7 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     }
     
     deinit {
-        debugPrint("[Bleu Radar] deinit.")
+        debugPrint("[Bleu Radar] deinit.", self)
         NotificationCenter.default.removeObserver(self)
     }
     
@@ -325,16 +328,18 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     // MARK: L2CAP
 
     public func peripheral(_ peripheral: CBPeripheral, didOpen channel: CBL2CAPChannel?, error: Error?) {
-        debugPrint("[Bleu Streamer] did open channel", peripheral, channel ?? "", error ?? "")
+        debugPrint("[Bleu Radar] did open channel", peripheral, channel ?? "", error ?? "")
         guard let channel: CBL2CAPChannel = channel else {
             DispatchQueue.main.async { [weak self] in
                 self?.didOpenChannelBlock?(nil, error)
             }
             return
         }
-        let streamer: Streamer = Streamer(peripheral: peripheral, channel: channel)
         DispatchQueue.main.async { [weak self] in
+            let streamer: Streamer = Streamer(channel: channel, peripheral: peripheral)
+            self?.streamer = streamer
             self?.didOpenChannelBlock?(streamer, error)
+//            self?.didOpenChannelBlock?(peripheral, channel, error)
         }
     }
 
@@ -432,7 +437,6 @@ public class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     private func completion() {
         debugPrint("[Bleu Radar] Completed")
         self.completionHandler?(self.completedRequests, nil)
-        
     }
 
     // MARK: - CBPeripheralDelegate
