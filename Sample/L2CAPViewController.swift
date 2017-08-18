@@ -62,34 +62,6 @@ class L2CAPViewController: UIViewController, StreamDelegate {
             self.textField.text = text
             let psm: CBL2CAPPSM = CBL2CAPPSM(text)!
             self.psm = psm
-//            self.radar = Bleu.openL2CAPChannel(psm, didOpenChannelBlock: { (streamer, error) in
-//                if let error = error {
-//                    debugPrint(error)
-//                    return
-//                }
-//
-//                streamer?.on({ (steam, event) in
-//
-//                    print("stream !!!!")
-//                })
-//                streamer?.open()
-////                let text: String = "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-////                let data: Data = text.data(using: .utf8)!
-////                let bytesWritten = data.withUnsafeBytes { streamer?.outputStream.write($0, maxLength: data.count) }
-//
-//            })
-
-//            let request: Request = Request(communication: L2CAPID(), PSM: psm)
-//            Bleu.openL2CAPChannel(request, completionBlock: { (peripheral, channel, error) in
-//                if let error = error {
-//                    debugPrint(error)
-//                    return
-//                }
-//                channel?.outputStream.delegate = self
-//                channel?.outputStream.schedule(in: RunLoop.current, forMode: .defaultRunLoopMode)
-//                self.channel = channel
-//                self.peripheral = peripheral
-//            })
         }
         Bleu.send([request]) { completedRequests, error in
             if error != nil {
@@ -106,6 +78,10 @@ class L2CAPViewController: UIViewController, StreamDelegate {
                 }
                 print(streamer!)
                 self.streamer = streamer
+                let image: UIImage = #imageLiteral(resourceName: "Bleu")
+                let data: Data = UIImagePNGRepresentation(image)!
+                let inputStream: InputStream = InputStream(data: data)
+                streamer?.fileStream = inputStream
                 streamer?.open()
             }
             radar.resume()
