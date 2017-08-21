@@ -26,16 +26,36 @@ class L2CAPViewController: UIViewController, StreamDelegate {
 
         Bleu.startAdvertising()
     }
+
+    var beacon: Beacon?
+
     @IBAction func publishChannel(_ sender: Any) {
-        Bleu.publishL2CAPChannel(withEncryption: false) { (peripheral, psm, error) in
-            if let error = error {
-                debugPrint(error)
-                return
-            }
+
+        Bleu.publishL2CAPChannel(withEncryption: false) { (peripheralManager, psm) in
             self.psmLabel.text = String(psm)
+            }.didOpenChannel { (streamer) in
+                let outputStream: OutputStream = OutputStream(toMemory: ())
+                self.streamer = streamer
+                streamer.outputStream = outputStream
+                streamer.received({ (error) in
+                    print("!!!!!!!!!!!!!!!!!!!!!!!!")
+                    if let error = error {
+                        debugPrint(error)
+                        return
+                    }
+                    guard let data: Data = outputStream.property(forKey: .dataWrittenToMemoryStreamKey) as? Data else {
+                        return
+                    }
+                    let image: UIImage = UIImage(data: data)!
+                    self.imageView.image = image
+                    self.imageView.setNeedsDisplay()
+                }).open()
+            }.onError { (error) in
+                print(error)
         }
     }
 
+    @IBOutlet weak var imageView: UIImageView!
     @IBOutlet weak var textField: UITextField!
     @IBOutlet weak var psmLabel: UILabel!
 
@@ -81,8 +101,14 @@ class L2CAPViewController: UIViewController, StreamDelegate {
                 let image: UIImage = #imageLiteral(resourceName: "Bleu")
                 let data: Data = UIImagePNGRepresentation(image)!
                 let inputStream: InputStream = InputStream(data: data)
-                streamer?.fileStream = inputStream
-                streamer?.open()
+                streamer?.inputStream = inputStream
+                streamer?.sended({ (error) in
+                    print("!!!!!!SENDED!!!!!!!!!!!!!!!!!")
+                    if let error = error {
+                        debugPrint(error)
+                        return
+                    }
+                }).open()
             }
             radar.resume()
 

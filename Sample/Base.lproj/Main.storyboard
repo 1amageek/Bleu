@@ -336,57 +336,67 @@
                         <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <subviews>
-                            <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="roundedRect" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="AnZ-V8-b0A">
-                                <rect key="frame" x="133.5" y="124" width="108" height="30"/>
-                                <state key="normal" title="Publish channel"/>
-                                <connections>
-                                    <action selector="publishChannel:" destination="y7j-l7-3mk" eventType="touchUpInside" id="PFd-x0-Gst"/>
-                                </connections>
-                            </button>
                             <textField opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="left" contentVerticalAlignment="center" borderStyle="roundedRect" textAlignment="natural" minimumFontSize="17" translatesAutoresizingMaskIntoConstraints="NO" id="daY-hd-LhM">
-                                <rect key="frame" x="16" y="274" width="343" height="30"/>
+                                <rect key="frame" x="16" y="290" width="343" height="30"/>
                                 <nil key="textColor"/>
                                 <fontDescription key="fontDescription" type="system" pointSize="14"/>
                                 <textInputTraits key="textInputTraits"/>
                             </textField>
                             <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="roundedRect" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="Jd3-u5-fvq">
-                                <rect key="frame" x="168" y="322" width="38" height="30"/>
+                                <rect key="frame" x="168" y="338" width="38" height="30"/>
                                 <state key="normal" title="Open"/>
                                 <connections>
                                     <action selector="openChannel:" destination="y7j-l7-3mk" eventType="touchUpInside" id="zBH-DN-L3d"/>
                                 </connections>
                             </button>
                             <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="---" textAlignment="natural" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="drH-sQ-v5A">
-                                <rect key="frame" x="175.5" y="180" width="23" height="21"/>
+                                <rect key="frame" x="175.5" y="196" width="23" height="21"/>
                                 <fontDescription key="fontDescription" type="system" pointSize="17"/>
                                 <nil key="textColor"/>
                                 <nil key="highlightedColor"/>
                             </label>
                             <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="roundedRect" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="u0q-SO-GOp">
-                                <rect key="frame" x="165" y="360" width="44" height="30"/>
+                                <rect key="frame" x="165" y="376" width="44" height="30"/>
                                 <state key="normal" title="Check"/>
                                 <connections>
                                     <action selector="checkAction:" destination="y7j-l7-3mk" eventType="touchUpInside" id="q4m-jI-3aC"/>
+                                </connections>
+                            </button>
+                            <imageView userInteractionEnabled="NO" contentMode="scaleToFill" horizontalHuggingPriority="251" verticalHuggingPriority="251" translatesAutoresizingMaskIntoConstraints="NO" id="NB4-c1-Gu3">
+                                <rect key="frame" x="157.5" y="72" width="60" height="60"/>
+                                <constraints>
+                                    <constraint firstAttribute="height" constant="60" id="Act-RE-BOt"/>
+                                    <constraint firstAttribute="width" constant="60" id="SNw-mZ-bCa"/>
+                                </constraints>
+                            </imageView>
+                            <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="roundedRect" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="AnZ-V8-b0A">
+                                <rect key="frame" x="133" y="140" width="108" height="30"/>
+                                <state key="normal" title="Publish channel"/>
+                                <connections>
+                                    <action selector="publishChannel:" destination="y7j-l7-3mk" eventType="touchUpInside" id="PFd-x0-Gst"/>
                                 </connections>
                             </button>
                         </subviews>
                         <color key="backgroundColor" white="1" alpha="1" colorSpace="calibratedWhite"/>
                         <constraints>
                             <constraint firstItem="AnZ-V8-b0A" firstAttribute="centerX" secondItem="BRP-bW-YAB" secondAttribute="centerX" id="2UU-Q1-Vyx"/>
+                            <constraint firstItem="NB4-c1-Gu3" firstAttribute="centerX" secondItem="BRP-bW-YAB" secondAttribute="centerX" id="5VJ-yv-ZWb"/>
                             <constraint firstAttribute="trailingMargin" secondItem="daY-hd-LhM" secondAttribute="trailing" id="5t1-Rs-ejX"/>
                             <constraint firstItem="daY-hd-LhM" firstAttribute="centerX" secondItem="BRP-bW-YAB" secondAttribute="centerX" id="7ZR-um-rft"/>
                             <constraint firstItem="daY-hd-LhM" firstAttribute="top" secondItem="AnZ-V8-b0A" secondAttribute="bottom" constant="120" id="90U-Be-KjU"/>
                             <constraint firstItem="drH-sQ-v5A" firstAttribute="top" secondItem="AnZ-V8-b0A" secondAttribute="bottom" constant="26" id="BIe-xs-p4X"/>
                             <constraint firstItem="u0q-SO-GOp" firstAttribute="top" secondItem="Jd3-u5-fvq" secondAttribute="bottom" constant="8" id="GZw-JM-Ozq"/>
+                            <constraint firstItem="NB4-c1-Gu3" firstAttribute="top" secondItem="goZ-7g-XKQ" secondAttribute="bottom" constant="8" id="HS1-Sn-nOw"/>
                             <constraint firstItem="Jd3-u5-fvq" firstAttribute="top" secondItem="daY-hd-LhM" secondAttribute="bottom" constant="18" id="MCh-sP-bJL"/>
                             <constraint firstItem="daY-hd-LhM" firstAttribute="leading" secondItem="BRP-bW-YAB" secondAttribute="leadingMargin" id="X7z-Ac-h5j"/>
+                            <constraint firstItem="AnZ-V8-b0A" firstAttribute="top" secondItem="NB4-c1-Gu3" secondAttribute="bottom" constant="8" id="bMn-cw-3km"/>
                             <constraint firstItem="u0q-SO-GOp" firstAttribute="centerX" secondItem="BRP-bW-YAB" secondAttribute="centerX" id="gqd-Or-K7N"/>
-                            <constraint firstItem="AnZ-V8-b0A" firstAttribute="top" secondItem="goZ-7g-XKQ" secondAttribute="bottom" constant="60" id="n1v-V2-Ll3"/>
                             <constraint firstItem="drH-sQ-v5A" firstAttribute="centerX" secondItem="BRP-bW-YAB" secondAttribute="centerX" id="oDP-U2-Emv"/>
                             <constraint firstItem="Jd3-u5-fvq" firstAttribute="centerX" secondItem="BRP-bW-YAB" secondAttribute="centerX" id="u8E-hy-8nA"/>
                         </constraints>
                     </view>
                     <connections>
+                        <outlet property="imageView" destination="NB4-c1-Gu3" id="Uhn-gj-hRp"/>
                         <outlet property="psmLabel" destination="drH-sQ-v5A" id="vVG-Vs-YXN"/>
                         <outlet property="textField" destination="daY-hd-LhM" id="Of3-FO-UTc"/>
                     </connections>

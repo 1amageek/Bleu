@@ -82,18 +82,13 @@ public class Bleu {
 
     // MARK: - L2CAP
 
-    public class func publishL2CAPChannel(withEncryption: Bool, block: ((CBPeripheralManager, CBL2CAPPSM, Error?) -> Void)?) {
-        let block = block ?? { (peripheralManager, PSM, error) in
-            if let error: Error = error {
-                debugPrint(error)
-                return
-            }
-        }
+    public class func publishL2CAPChannel(withEncryption: Bool, block: ((CBPeripheralManager, CBL2CAPPSM) -> Void)?) -> Beacon {
         shared.server.publishL2CAPChannel(withEncryption: withEncryption, block: block)
+        return shared.server
     }
 
-    public class func unpublishL2CAPChannel() {
-        shared.server.unpublishL2CAPChannel()
+    public class func unpublishL2CAPChannel(_ block: () -> Void) {
+        shared.server.unpublishL2CAPChannel(block)
     }
 
     // MARK: - Open L2CAPChannel
@@ -107,19 +102,6 @@ public class Bleu {
         radar.resume()
         return radar
     }
-
-//    @discardableResult
-//    public class func openL2CAPChannel(_ request: Request,
-//                                       options: Streamer.Options = Streamer.Options(),
-//                                       completionBlock: ((CBPeripheral, CBL2CAPChannel?, Error?) -> Void)?) -> Streamer {
-//        let streamer = Streamer(request: request, options: options)
-//        shared.streamers.insert(streamer)
-//        streamer.didOpenChannelBlock = { (peripheral, channel, error) in
-//            completionBlock?(peripheral, channel, error)
-//        }
-//        streamer.resume()
-//        return streamer
-//    }
 
     // MARK: - Request
 
