@@ -1,7 +1,7 @@
 Pod::Spec.new do |s|
 
   s.name         = "Bleu"
-  s.version      = "1.0"
+  s.version      = "1.1.0"
   s.summary      = "BLE(Bluetooth LE) for U💖). Bleu enables communication in server and client format."
   s.description  = <<-DESC
   BLE(Bluetooth LE) for U💖). Bleu enables communication in server and client format.
@@ -15,7 +15,7 @@ Pod::Spec.new do |s|
   s.social_media_url   = "http://twitter.com/1amageek"
   s.platform     = :ios, "10.0"
   s.source       = { :git => "https://github.com/1amageek/Bleu.git", :tag => "#{s.version}" }
-  s.source_files  = "Sources/**/*.swift"
+  s.source_files  = "Bleu/**/*.swift"
   s.requires_arc = true
 
 end
