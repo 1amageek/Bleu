@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		1227D031216F0FAB00040B49 /* Radar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1227D030216F0FAB00040B49 /* Radar.swift */; };
 		1227D034216F112900040B49 /* Default-568h@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 1227D033216F112900040B49 /* Default-568h@2x.png */; };
+		1227D035216F138600040B49 /* Radar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1227D030216F0FAB00040B49 /* Radar.swift */; };
 		1260BB9E1E7D705000187496 /* Communicable+.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12AD07011E7943CF007D5311 /* Communicable+.swift */; };
 		1264FA331E7FC088005DCC2E /* BeaconViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1264FA321E7FC088005DCC2E /* BeaconViewController.swift */; };
 		12AD06D91E794054007D5311 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12AD06D81E794054007D5311 /* AppDelegate.swift */; };
@@ -256,6 +257,7 @@
 				12AD07141E794442007D5311 /* Request.swift in Sources */,
 				12AD07031E7943CF007D5311 /* BroadcastViewController.swift in Sources */,
 				12AD07091E7943D6007D5311 /* NotifyViewController.swift in Sources */,
+				1227D035216F138600040B49 /* Radar.swift in Sources */,
 				12AD07111E794442007D5311 /* Bleu.swift in Sources */,
 				12AD07121E794442007D5311 /* Communicable.swift in Sources */,
 				12AD07051E7943CF007D5311 /* GetViewController.swift in Sources */,
@@ -434,7 +436,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = inc.stamp.Bleu;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_VERSION = 3.0;
+				SWIFT_VERSION = 4.2;
 			};
 			name = Debug;
 		};
@@ -447,7 +449,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = inc.stamp.Bleu;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_VERSION = 3.0;
+				SWIFT_VERSION = 4.2;
 			};
 			name = Release;
 		};
