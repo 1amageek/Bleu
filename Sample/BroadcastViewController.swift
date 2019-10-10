@@ -20,7 +20,7 @@ class BroadcastViewController: UIViewController {
             manager.respond(to: request, withResult: .success)
         }))
         
-        Bleu.startAdvertising()
+//        Bleu.startAdvertising()
     }
     
     deinit {
@@ -52,6 +52,7 @@ class BroadcastViewController: UIViewController {
         }
         
         Bleu.send([request]) { completedRequests, error in
+            print(completedRequests)
             print("timeout")
         }
     }

@@ -12,7 +12,7 @@ import CoreBluetooth
 extension Communicable {
     
     public var serviceUUID: CBUUID {
-        return CBUUID(string: "4E6C6189-D06B-4835-8F3B-F5CBC36560FB")
+        return CBUUID(string: "D417C187-D6A0-440B-BB88-B86512966007")
     }
     
 }
@@ -64,7 +64,7 @@ struct BroadcastUserID: Communicable {
     }
     
     public var characteristicUUID: CBUUID? {
-        return CBUUID(string: "DC87206F-3B0B-4D9F-A93F-A72DF3DEC226")
+        return CBUUID(string: "41F1FC10-F332-4581-9C30-876C6A4EF7A7")
     }
     
 }

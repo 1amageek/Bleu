@@ -43,5 +43,7 @@
 	</array>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>Bluetooth</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Bluetooth</string>
 </dict>
 </plist>

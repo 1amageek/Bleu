@@ -117,6 +117,13 @@ public class Bleu {
             }
             
             shared.receivers.insert(receiver)
+
+            if case .broadcast(_) = receiver.method {
+                if isAdvertising {
+                    Bleu.startAdvertising()
+                }
+                return
+            }
             
             let serviceUUIDs: [CBUUID] = shared.services.map({ return $0.uuid })
             if !serviceUUIDs.contains(receiver.serviceUUID) {
@@ -124,7 +131,7 @@ public class Bleu {
                 service.characteristics = []
                 Bleu.addService(service)
             }
-            
+
             shared.services.forEach({ (service) in
                 if service.uuid == receiver.serviceUUID {
                     service.characteristics?.append(receiver.characteristic)

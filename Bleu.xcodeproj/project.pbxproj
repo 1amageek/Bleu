@@ -10,6 +10,7 @@
 		1227D031216F0FAB00040B49 /* Radar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1227D030216F0FAB00040B49 /* Radar.swift */; };
 		1227D034216F112900040B49 /* Default-568h@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 1227D033216F112900040B49 /* Default-568h@2x.png */; };
 		1227D035216F138600040B49 /* Radar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1227D030216F0FAB00040B49 /* Radar.swift */; };
+		1227D037216F29CF00040B49 /* Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 1227D036216F29CF00040B49 /* Info.plist */; };
 		1260BB9E1E7D705000187496 /* Communicable+.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12AD07011E7943CF007D5311 /* Communicable+.swift */; };
 		1264FA331E7FC088005DCC2E /* BeaconViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1264FA321E7FC088005DCC2E /* BeaconViewController.swift */; };
 		12AD06D91E794054007D5311 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12AD06D81E794054007D5311 /* AppDelegate.swift */; };
@@ -36,6 +37,7 @@
 /* Begin PBXFileReference section */
 		1227D030216F0FAB00040B49 /* Radar.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = Radar.swift; path = Bleu/Radar.swift; sourceTree = SOURCE_ROOT; };
 		1227D033216F112900040B49 /* Default-568h@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Default-568h@2x.png"; sourceTree = "<group>"; };
+		1227D036216F29CF00040B49 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		125FA7C61E7631B600DC0D62 /* Bleu.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Bleu.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1264FA321E7FC088005DCC2E /* BeaconViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BeaconViewController.swift; sourceTree = "<group>"; };
 		12AD06D61E794054007D5311 /* Sample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Sample.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -78,6 +80,7 @@
 		1227D032216F0FCA00040B49 /* Bleu */ = {
 			isa = PBXGroup;
 			children = (
+				1227D036216F29CF00040B49 /* Info.plist */,
 				12AD06F51E794397007D5311 /* Beacon.swift */,
 				1227D030216F0FAB00040B49 /* Radar.swift */,
 				12AD06F61E794397007D5311 /* Bleu.swift */,
@@ -219,6 +222,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1227D037216F29CF00040B49 /* Info.plist in Resources */,
 				1227D034216F112900040B49 /* Default-568h@2x.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

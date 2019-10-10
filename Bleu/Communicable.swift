@@ -31,8 +31,8 @@ public enum RequestMethod {
             return .read
         case .post: return .write
         case .broadcast(let isNotify):
-            if isNotify { return [.read, .notify, .broadcast] }
-            return [.read, .broadcast]
+            if isNotify { return [.notify, .broadcast] }
+            return [.broadcast]
         }
     }
 
