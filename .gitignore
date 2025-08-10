@@ -1,17 +1,36 @@
+# Bleu v2 Framework - Comprehensive .gitignore
+
+# ============================================================================
+# macOS System Files
+# ============================================================================
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.DocumentRevisions-V100
+.fseventsd
+.TemporaryItems
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDouble
+.LSOverride
 
-# Created by https://www.gitignore.io/api/xcode
-
-### Xcode ###
-# Xcode
-#
-# gitignore contributors: remember to update Global/Xcode.gitignore, Objective-C.gitignore & Swift.gitignore
+# ============================================================================
+# Xcode & iOS Development
+# ============================================================================
 
 ## Build generated
 build/
-DerivedData
+DerivedData/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
 
-## Various settings
+## Various Xcode settings
 *.pbxuser
 !default.pbxuser
 *.mode1v3
@@ -20,10 +39,322 @@ DerivedData
 !default.mode2v3
 *.perspectivev3
 !default.perspectivev3
-xcuserdata
-
-## Other
+xcuserdata/
 *.xccheckout
 *.moved-aside
 *.xcuserstate
+*.xcscmblueprint
+*.xcworkspace
+!default.xcworkspace
 
+## Obj-C/Swift specific
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+## Playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+## Swift Package Manager
+.build/
+Packages/
+Package.pins
+Package.resolved
+*.xcodeproj/
+xcuserdata/
+DerivedData/
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+.swiftpm/xcode/package.xcworkspace/xcshareddata/
+.swiftpm/configuration/
+.netrc
+
+# ============================================================================
+# IDEs & Editors
+# ============================================================================
+
+## Visual Studio Code
+.vscode/
+*.code-workspace
+
+## JetBrains IDEs (AppCode, etc.)
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+## Vim
+*.swp
+*.swo
+*~
+
+## Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+## Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+## Atom
+.atom/
+
+# ============================================================================
+# Swift & Package Manager Specific
+# ============================================================================
+
+## Swift Package Manager build artifacts
+.build/
+Packages/
+Package.pins
+Package.resolved
+
+## Swift generated files
+*.generated.swift
+
+## Swift coverage
+*.profdata
+*.profraw
+coverage.txt
+coverage/
+
+## Swift testing
+.test-results/
+test-results.xml
+
+# ============================================================================
+# Documentation & Generated Files
+# ============================================================================
+
+## Documentation generation
+docs/generated/
+*.docset/
+.jazzy.yaml
+jazzy_output/
+
+## Auto-generated files
+Sources/Bleu/Version.swift
+Sources/Bleu/BuildInfo.swift
+
+# ============================================================================
+# CI/CD & Deployment
+# ============================================================================
+
+## fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+fastlane/README.md
+fastlane/.env
+fastlane/.env.*
+
+## GitHub Actions
+.github/workflows/*.log
+
+## Certificates and provisioning profiles
+*.cer
+*.p12
+*.mobileprovision
+*.provisionprofile
+
+## App Store Connect API keys
+AuthKey_*.p8
+
+# ============================================================================
+# Security & Secrets
+# ============================================================================
+
+## API Keys and Secrets
+.env
+.env.local
+.env.development
+.env.production
+secrets.json
+config.json
+**/secrets/
+**/*secret*
+**/*key*
+**/*password*
+**/*credential*
+
+## Certificate files
+*.pem
+*.key
+*.crt
+*.csr
+*.p12
+*.pfx
+
+## Configuration files with sensitive data
+bleu-config.json
+production-config.json
+
+# ============================================================================
+# Logging & Temporary Files
+# ============================================================================
+
+## Log files
+*.log
+logs/
+crash-reports/
+
+## Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+## Cache directories
+.cache/
+caches/
+
+# ============================================================================
+# Testing & Analysis
+# ============================================================================
+
+## Test results
+test-results/
+*.xml
+coverage/
+*.gcov
+*.gcda
+*.gcno
+
+## Performance testing
+*.trace
+*.dtps
+
+## Memory analysis
+*.memgraph
+*.malloc
+
+## Static analysis
+*.plist
+
+# ============================================================================
+# Package Managers & Dependencies
+# ============================================================================
+
+## Carthage
+Carthage/Build/
+Carthage/Checkouts/
+
+## CocoaPods (legacy support)
+Pods/
+Podfile.lock
+*.xcworkspace
+
+## Mint
+.mint/
+
+# ============================================================================
+# Backup & Archives
+# ============================================================================
+
+## Backup files
+*.backup
+*.bak
+*.orig
+*~
+.#*
+
+## Archive files
+*.zip
+*.tar.gz
+*.rar
+
+# ============================================================================
+# Bleu Framework Specific
+# ============================================================================
+
+## Bleu configuration files (contain sensitive settings)
+bleu-production.json
+bleu-staging.json
+**/bleu-config-*.json
+
+## Bleu logs and telemetry
+bleu-logs/
+bleu-telemetry/
+*.bleu-log
+
+## Bleu testing artifacts
+bleu-test-data/
+mock-ble-devices.json
+
+## Performance benchmarks (may contain sensitive timing data)
+benchmarks/
+performance-results/
+
+# ============================================================================
+# Swift Package Index & Distribution
+# ============================================================================
+
+## Swift Package Index
+.spi.yml.bak
+
+## Distribution packages
+*.framework.zip
+*.xcframework.zip
+
+# ============================================================================
+# Docker & Containerization
+# ============================================================================
+
+## Docker
+Dockerfile.*
+docker-compose.*.yml
+.dockerignore
+
+# ============================================================================
+# Editor-specific files
+# ============================================================================
+
+## TextMate
+*.tmproj
+*.tmproject
+tmtags
+
+## BBEdit
+*.bbprojectd/
+
+# ============================================================================
+# Network & Communication
+# ============================================================================
+
+## Network logs
+*.pcap
+*.cap
+network-logs/
+
+# ============================================================================
+# Custom Build Scripts Output
+# ============================================================================
+
+## Custom build artifacts
+build-output/
+generated/
+*.generated
+
+# ============================================================================
+# END OF .gitignore
+# ============================================================================
+
+# Note: This .gitignore is comprehensive and includes patterns for:
+# - Swift Package Manager projects
+# - Xcode development
+# - Multiple IDEs and editors
+# - CI/CD pipelines
+# - Security-sensitive files
+# - Bleu framework-specific files
+# - Testing and analysis tools
+# - Documentation generation
+# - Temporary and backup files
