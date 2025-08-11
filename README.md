@@ -78,7 +78,7 @@ distributed actor TemperatureSensor: PeripheralActor {
 }
 ```
 
-#### Server (Peripheral) Side
+#### Peripheral Side
 
 ```swift
 // Create and advertise the sensor
@@ -89,7 +89,7 @@ let sensor = TemperatureSensor(actorSystem: actorSystem)
 try await actorSystem.startAdvertising(sensor)
 ```
 
-#### Client (Central) Side
+#### Central Side
 
 ```swift
 // Discover and connect to sensors
@@ -192,8 +192,7 @@ do {
 
 ```
 ┌─────────────┐                    ┌─────────────┐
-│   Client    │                    │   Server    │
-│  (Central)  │                    │(Peripheral) │
+│   Central   │                    │ Peripheral  │
 └──────┬──────┘                    └──────┬──────┘
        │                                   │
        │  discover(TemperatureSensor)      │
