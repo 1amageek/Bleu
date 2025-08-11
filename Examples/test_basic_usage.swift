@@ -8,7 +8,7 @@ import Distributed
 @main
 struct BasicTest {
     static func main() async {
-        print("🚀 Starting Bleu v2 Basic Test")
+        print("🚀 Starting Bleu 2 Basic Test")
         print("================================")
         
         // Initialize the actor system
@@ -20,7 +20,7 @@ struct BasicTest {
         let transport = BLETransport.shared
         
         // Test fragmentation
-        let testData = Data("Hello Bleu v2! This is a test message for fragmentation.".utf8)
+        let testData = Data("Hello Bleu 2! This is a test message for fragmentation.".utf8)
         let packets = await transport.fragment(testData)
         print("✅ Data fragmented into \(packets.count) packet(s)")
         

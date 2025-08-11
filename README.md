@@ -1,7 +1,7 @@
 <div align="center">
   <img src="Bleu.png" alt="Bleu Logo" width="600">
   
-  # Bleu v2
+  # Bleu 2
   
   **Modern Bluetooth Low Energy Framework with Swift Distributed Actors**
   
@@ -15,7 +15,7 @@
 
 ## Overview
 
-Bleu v2 is a revolutionary Bluetooth Low Energy framework that leverages **Swift's Distributed Actor System** to create seamless, type-safe communication between BLE devices. It transforms complex BLE operations into simple, intuitive actor method calls.
+Bleu 2 is a revolutionary Bluetooth Low Energy framework that leverages **Swift's Distributed Actor System** to create seamless, type-safe communication between BLE devices. It transforms complex BLE operations into simple, intuitive actor method calls.
 
 ## ✨ Key Features
 
@@ -264,12 +264,12 @@ Bleu is available under the MIT license. See the [LICENSE](LICENSE) file for mor
 
 ## 🙏 Acknowledgments
 
-Special thanks to the Swift community and all contributors who have helped shape Bleu v2.
+Special thanks to the Swift community and all contributors who have helped shape Bleu 2.
 
 ---
 
 <div align="center">
-  Made with ❤️ by the Bleu Team
+  Made with ❤️ by <a href="https://x.com/1amageek">@1amageek</a>
   
   [Documentation](https://github.com/1amageek/Bleu/wiki) • [Issues](https://github.com/1amageek/Bleu/issues) • [Discussions](https://github.com/1amageek/Bleu/discussions)
 </div>

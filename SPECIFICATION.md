@@ -1,14 +1,14 @@
-# Bleu v2.0 Specification
+# Bleu 2.0 Specification
 
 ## Overview
 
-Bleu v2.0 is a Swift framework that leverages Distributed Actors to provide transparent, type-safe Bluetooth Low Energy communication. It completely abstracts CoreBluetooth complexity, allowing developers to write BLE applications as simple distributed function calls.
+Bleu 2.0 is a Swift framework that leverages Distributed Actors to provide transparent, type-safe Bluetooth Low Energy communication. It completely abstracts CoreBluetooth complexity, allowing developers to write BLE applications as simple distributed function calls.
 
 ## Core Concepts
 
 ### 1. Peripheral as Distributed Actor
 
-In Bleu v2.0, BLE Peripherals are represented as Distributed Actors:
+In Bleu 2.0, BLE Peripherals are represented as Distributed Actors:
 
 - **PeripheralActor**: Base type for all BLE peripherals
 - **Actor ID = Peripheral UUID**: Each peripheral is uniquely identified by its UUID

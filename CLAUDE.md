@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Bleu v2 is a next-generation Swift framework for Bluetooth Low Energy (BLE) communication that leverages Swift's Distributed Actor system to provide transparent, type-safe communication between BLE Peripherals and Centrals. It completely abstracts away the complexity of CoreBluetooth, allowing developers to write BLE applications as if they were simple distributed function calls.
+Bleu 2 is a next-generation Swift framework for Bluetooth Low Energy (BLE) communication that leverages Swift's Distributed Actor system to provide transparent, type-safe communication between BLE Peripherals and Centrals. It completely abstracts away the complexity of CoreBluetooth, allowing developers to write BLE applications as if they were simple distributed function calls.
 
 ## Core Philosophy
 
 **"Make BLE communication as simple as calling a function"**
 
-Developers should focus on their business logic, not BLE complexity. Bleu v2 handles all the details:
+Developers should focus on their business logic, not BLE complexity. Bleu 2 handles all the details:
 - Service/Characteristic management → Automatic
 - UUID generation → Automatic
 - Connection management → Automatic
@@ -28,7 +28,7 @@ Developers should focus on their business logic, not BLE complexity. Bleu v2 han
 └────────────────▲─────────────────────────┘
                  │ Transparent RPC
 ┌────────────────┴─────────────────────────┐
-│         Bleu v2 Framework                │
+│         Bleu 2 Framework                 │
 ├──────────────────────────────────────────┤
 │  Layer 4: Public API                     │
 │    - BLEActorSystem                      │  ← Distributed Actor System

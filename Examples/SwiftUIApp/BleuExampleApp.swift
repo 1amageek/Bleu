@@ -3,7 +3,7 @@
 //  SwiftUIApp
 //
 //  SwiftUIアプリケーションの例
-//  SwiftUI application example for Bleu v2
+//  SwiftUI application example for Bleu 2
 //
 
 import SwiftUI
