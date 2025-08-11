@@ -1,51 +1,47 @@
-# Bleu v2 🔵
+<div align="center">
+  <img src="Bleu.png" alt="Bleu Logo" width="600">
+  
+  # Bleu v2
+  
+  **Modern Bluetooth Low Energy Framework with Swift Distributed Actors**
+  
+  [![Swift 6.0](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
+  [![Platforms](https://img.shields.io/badge/Platforms-iOS%2015%2B%20|%20macOS%2012%2B%20|%20watchOS%208%2B%20|%20tvOS%2015%2B-brightgreen.svg)](https://developer.apple.com/swift/)
+  [![Swift Package Manager](https://img.shields.io/badge/SPM-Compatible-brightgreen.svg)](https://swift.org/package-manager/)
+  [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+</div>
 
-**Enterprise-Grade Bluetooth Low Energy Framework for Swift**
+---
 
-[![Swift 6.1](https://img.shields.io/badge/Swift-6.1-orange.svg)](https://swift.org)
-[![Platforms](https://img.shields.io/badge/Platforms-iOS%2018%2B%20|%20macOS%2015%2B%20|%20watchOS%2011%2B%20|%20tvOS%2018%2B-brightgreen.svg)](https://developer.apple.com/swift/)
-[![Swift Package Manager](https://img.shields.io/badge/SPM-Compatible-brightgreen.svg)](https://swift.org/package-manager/)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-Passing-green.svg)](#testing)
+## Overview
 
-Bleu v2 is a complete rewrite of the Bluetooth Low Energy framework, designed from the ground up with **Distributed Actors** and **Swift Concurrency**. It provides a modern, type-safe, performant, and enterprise-ready solution for BLE development.
+Bleu v2 is a revolutionary Bluetooth Low Energy framework that leverages **Swift's Distributed Actor System** to create seamless, type-safe communication between BLE devices. It transforms complex BLE operations into simple, intuitive actor method calls.
 
 ## ✨ Key Features
 
 ### 🎭 **Distributed Actor Architecture**
-- Type-safe remote procedure calls over BLE
-- Transparent communication between devices
-- Swift 6.1 concurrency and actor isolation
-
-### 🔒 **Enterprise Security**
-- Built-in AES-GCM encryption
-- Device authentication and trust management
-- Certificate validation and PKI support
-- Security configurations per environment
+- Transparent RPC over BLE using Swift's native distributed actors
+- Type-safe remote method invocation
+- Automatic serialization and error handling
+- Actor isolation for thread safety
 
 ### 🚀 **High Performance**
-- Adaptive data compression (LZ4, LZFSE, LZMA)
-- Smart buffer pool management
-- Flow control with backpressure handling
-- Connection quality monitoring
+- Binary packet fragmentation with 24-byte headers
+- Efficient data transport with checksums
+- Adaptive MTU negotiation
+- Automatic packet reassembly
 
-### 🔄 **Automatic Recovery**
-- Intelligent reconnection policies
-- Connection state management
-- Error recovery with suggested actions
-- Quality-based adaptive throttling
+### 📱 **Modern Swift Integration**
+- Full async/await support
+- AsyncStream for real-time data
+- Swift 6 concurrency features
+- Sendable protocol compliance
 
-### 📊 **Comprehensive Monitoring**
-- Structured logging with multiple destinations
-- Real-time performance metrics
-- Connection quality tracking
-- Memory and resource monitoring
-
-### ⚙️ **Production Ready**
-- Environment-specific configurations
-- Feature flag management
-- Hot configuration reloading
-- Resource cleanup and management
+### 🔧 **Developer Friendly**
+- Simple, intuitive API
+- Comprehensive logging system
+- Automatic resource management
+- Clean error handling
 
 ## 🚀 Quick Start
 
@@ -61,253 +57,219 @@ dependencies: [
 
 ### Basic Usage
 
-#### Create a BLE Server
+#### Define Your Distributed Actor
 
 ```swift
 import Bleu
+import Distributed
 
-// Create a server that responds to device info requests
-let server = try await BleuServer(
-    serviceUUID: UUID(uuidString: "12345678-1234-5678-9ABC-123456789ABC")!,
-    characteristicUUIDs: [UUID(uuidString: "87654321-4321-8765-CBA9-987654321CBA")!],
-    localName: "My BLE Device"
-)
-
-// Handle incoming requests with type safety
-await server.handleRequests(ofType: GetDeviceInfoRequest.self) { request in
-    return GetDeviceInfoRequest.Response(
-        deviceName: "Bleu Device",
-        firmwareVersion: "2.0.0", 
-        batteryLevel: 85
-    )
+// Define a distributed actor that runs on a BLE peripheral
+distributed actor TemperatureSensor: PeripheralActor {
+    typealias ActorSystem = BLEActorSystem
+    
+    distributed func getTemperature() async throws -> Double {
+        // Read from actual sensor hardware
+        return 25.5
+    }
+    
+    distributed func setUpdateInterval(_ seconds: Int) async throws {
+        // Configure sensor update rate
+    }
 }
 ```
 
-#### Create a BLE Client
+#### Server (Peripheral) Side
 
 ```swift
-import Bleu
+// Create and advertise the sensor
+let actorSystem = BLEActorSystem.shared
+let sensor = TemperatureSensor(actorSystem: actorSystem)
 
-// Create a client to discover and connect to devices
-let client = try await BleuClient(
-    serviceUUIDs: [UUID(uuidString: "12345678-1234-5678-9ABC-123456789ABC")!]
-)
+// Start advertising the sensor service
+try await actorSystem.startAdvertising(sensor)
+```
 
-// Discover nearby devices
-let devices = try await client.discover(timeout: 10.0)
+#### Client (Central) Side
 
-// Connect to the first discovered device
-if let device = devices.first {
-    let peripheral = try await client.connect(to: device)
+```swift
+// Discover and connect to sensors
+let actorSystem = BLEActorSystem.shared
+let sensors = try await actorSystem.discover(TemperatureSensor.self, timeout: 10.0)
+
+if let remoteSensor = sensors.first {
+    // Call methods on the remote sensor as if it were local!
+    let temperature = try await remoteSensor.getTemperature()
+    print("Current temperature: \(temperature)°C")
     
-    // Send a type-safe request
-    let request = GetDeviceInfoRequest()
-    let response = try await client.sendRequest(request, to: device.identifier)
-    
-    print("Device: \(response.deviceName), Battery: \(response.batteryLevel)%")
+    // Configure the remote sensor
+    try await remoteSensor.setUpdateInterval(5)
 }
 ```
 
 ## 🎯 Advanced Features
 
-### Type-Safe Remote Procedure Calls
-
-Define your communication protocols with full type safety:
+### Custom Service Metadata
 
 ```swift
-struct GetDeviceInfoRequest: RemoteProcedure {
-    let serviceUUID = UUID(uuidString: "12345678-1234-5678-9ABC-123456789ABC")!
-    let characteristicUUID = UUID(uuidString: "87654321-4321-8765-CBA9-987654321CBA")!
+distributed actor SmartLight: PeripheralActor {
+    typealias ActorSystem = BLEActorSystem
     
-    struct Response: Sendable, Codable {
-        let deviceName: String
-        let firmwareVersion: String
-        let batteryLevel: Int
+    // Custom service configuration
+    static var serviceMetadata: ServiceMetadata {
+        ServiceMetadata(
+            uuid: UUID(uuidString: "12345678-1234-5678-9ABC-123456789ABC")!,
+            characteristics: [
+                CharacteristicMetadata(
+                    uuid: UUID(uuidString: "87654321-4321-8765-CBA9-987654321CBA")!,
+                    properties: [.read, .write, .notify],
+                    permissions: [.readable, .writeable]
+                )
+            ]
+        )
+    }
+    
+    distributed func setBrightness(_ level: Int) async throws {
+        // Control light brightness
+    }
+    
+    distributed func setColor(_ rgb: (r: Int, g: Int, b: Int)) async throws {
+        // Set RGB color
     }
 }
 ```
 
-### Real-time Data Streaming
-
-Subscribe to continuous data streams with AsyncSequence:
+### Notifications and Subscriptions
 
 ```swift
-// Subscribe to temperature sensor data
-let temperatureStream = try await client.subscribe(
-    to: SensorDataNotification.self,
-    from: deviceId,
-    characteristicUUID: sensorCharacteristicUUID
-)
-
-for await sensorData in temperatureStream {
-    print("Temperature: \(sensorData.temperature)°C")
-    print("Humidity: \(sensorData.humidity)%")
-}
-```
-
-### Distributed Actor Communication
-
-Interact with BLE devices as if they were local actors:
-
-```swift
-// Get a distributed actor reference to a remote BLE device
-let peripheral: PeripheralActor = try await centralActor.connect(to: deviceId)
-
-// Call distributed methods directly
-try await peripheral.startAdvertising()
-try await peripheral.sendNotification(characteristicUUID: uuid, data: data)
-```
-
-### Bluetooth State Monitoring
-
-Monitor Bluetooth state changes reactively:
-
-```swift
-let stateStream = Bleu.monitorBluetoothState()
-
-for await state in stateStream {
-    switch state {
-    case .poweredOn:
-        print("Bluetooth ready!")
-    case .poweredOff:
-        print("Bluetooth disabled")
-    default:
-        print("Bluetooth state: \(state)")
-    }
-}
-```
-
-## 📱 SwiftUI Integration
-
-Bleu provides reactive SwiftUI integration:
-
-```swift
-import SwiftUI
-import Bleu
-
-struct ContentView: View {
-    @StateObject private var bluetoothManager = BluetoothManager()
+distributed actor HeartRateMonitor: PeripheralActor {
+    typealias ActorSystem = BLEActorSystem
     
-    var body: some View {
-        VStack {
-            if bluetoothManager.isAvailable {
-                Text("✓ Bluetooth Ready")
-                    .foregroundColor(.green)
-            } else {
-                Text("⚠️ Bluetooth Unavailable")
-                    .foregroundColor(.red)
+    // Stream heart rate data
+    distributed func streamHeartRate() -> AsyncStream<Int> {
+        AsyncStream { continuation in
+            // Setup sensor monitoring
+            Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+                let heartRate = Int.random(in: 60...100)
+                continuation.yield(heartRate)
             }
         }
     }
 }
 
-@MainActor
-class BluetoothManager: ObservableObject {
-    @Published var isAvailable = false
-    
-    init() {
-        Task {
-            let stateStream = Bleu.monitorBluetoothState()
-            for await state in stateStream {
-                self.isAvailable = state == .poweredOn
-            }
-        }
-    }
+// Client side - subscribe to updates
+let monitor = try await actorSystem.connect(to: deviceID, as: HeartRateMonitor.self)
+for await heartRate in await monitor.streamHeartRate() {
+    print("Heart rate: \(heartRate) BPM")
 }
+```
+
+### Error Handling
+
+```swift
+do {
+    let devices = try await actorSystem.discover(TemperatureSensor.self)
+    // ... use devices
+} catch BleuError.bluetoothPoweredOff {
+    print("Please enable Bluetooth")
+} catch BleuError.connectionTimeout {
+    print("Connection timed out")
+} catch {
+    print("Unexpected error: \(error)")
+}
+```
+
+## 📋 Architecture
+
+### Core Components
+
+- **`BLEActorSystem`**: The distributed actor system managing BLE communication
+- **`PeripheralActor`**: Protocol for actors that can be advertised as BLE peripherals
+- **`BLETransport`**: Handles packet fragmentation and reassembly
+- **`EventBridge`**: Routes BLE events to distributed actors
+- **`LocalPeripheralActor`/`LocalCentralActor`**: Core BLE operation management
+
+### Communication Flow
+
+```
+┌─────────────┐                    ┌─────────────┐
+│   Client    │                    │   Server    │
+│  (Central)  │                    │(Peripheral) │
+└──────┬──────┘                    └──────┬──────┘
+       │                                   │
+       │  discover(TemperatureSensor)      │
+       │────────────────────────────────>  │
+       │                                   │
+       │  <────────────────────────────    │
+       │     [TemperatureSensor actors]    │
+       │                                   │
+       │  remoteSensor.getTemperature()    │
+       │────────────────────────────────>  │
+       │                                   │
+       │  <────────────────────────────    │
+       │            25.5°C                 │
+       └───────────────────────────────────┘
+```
+
+### Binary Packet Format
+
+Bleu uses an efficient binary packet format for BLE communication:
+
+```
+┌──────────────┬─────────────┬──────────────┬──────────┐
+│  UUID (16B)  │  Seq (2B)   │  Total (2B)  │ CRC (4B) │ Payload
+└──────────────┴─────────────┴──────────────┴──────────┘
+        24-byte header
 ```
 
 ## 🧪 Testing
-
-Bleu includes a comprehensive mock system for testing:
 
 ```swift
 import Testing
 @testable import Bleu
 
-@Test("Mock BLE communication")
-func testMockCommunication() async throws {
-    let mockSystem = MockBLEActorSystem()
+@Test("Distributed actor communication")
+func testActorCommunication() async throws {
+    let actorSystem = BLEActorSystem.shared
     
-    // Setup mock response
-    let expectedResponse = GetDeviceInfoRequest.Response(
-        deviceName: "Mock Device",
-        firmwareVersion: "1.0.0",
-        batteryLevel: 75
-    )
+    // Create a mock peripheral
+    let mockSensor = MockTemperatureSensor(actorSystem: actorSystem)
     
-    try mockSystem.setMockResponse(
-        expectedResponse,
-        for: "getDeviceInfo",
-        characteristicUUID: characteristicUUID
-    )
-    
-    // Test the interaction
-    let actualResponse = try await mockPeripheral.simulateRequest(
-        GetDeviceInfoRequest.Response.self,
-        method: "getDeviceInfo",
-        characteristicUUID: characteristicUUID
-    )
-    
-    #expect(actualResponse.deviceName == expectedResponse.deviceName)
+    // Test remote method invocation
+    let temperature = try await mockSensor.getTemperature()
+    #expect(temperature > 0)
 }
 ```
 
-## 📋 Requirements
+## 📱 Platform Requirements
 
-- **iOS 18.0+**
-- **macOS 15.0+** 
-- **watchOS 11.0+**
-- **tvOS 18.0+**
-- **Swift 6.1+**
-- **Xcode 16.0+**
+- **iOS 15.0+** / **macOS 12.0+** / **watchOS 8.0+** / **tvOS 15.0+**
+- **Swift 6.0+**
+- **Xcode 15.0+**
 
-## 🗺️ Architecture
+## 🗺️ Roadmap
 
-Bleu is built around several key architectural concepts:
-
-### Distributed Actor System
-- **BLEActorSystem**: Manages distributed actor communication over BLE
-- **BluetoothActor**: Global actor managing Bluetooth state and coordination
-- **PeripheralActor**: Distributed actor representing BLE servers
-- **CentralActor**: Distributed actor representing BLE clients
-
-### Type-Safe Communication
-- **RemoteProcedure**: Protocol for defining type-safe RPC calls
-- **Sendable Types**: All data types conform to Sendable for actor isolation
-- **Codable Integration**: Automatic serialization/deserialization
-
-### Modern Concurrency
-- Full async/await support throughout the API
-- AsyncSequence for streaming data
-- Actor isolation for thread safety
-- Swift 6 concurrency features
-
-## 🚀 Migration from v1
-
-Bleu v2 is a complete rewrite with breaking changes. See the [Migration Guide](MIGRATION.md) for detailed migration instructions.
-
-Key changes:
-- Modern Swift Concurrency (async/await) replaces callbacks
-- Distributed Actors replace Server/Client classes
-- Type-safe RemoteProcedure replaces Communicable protocol
-- Minimum deployment targets updated to latest OS versions
-
-## 📖 Examples
-
-Check out the comprehensive SwiftUI example app in the `Examples/` directory that demonstrates:
-- BLE Server implementation
-- BLE Client with device discovery
-- Real-time sensor data streaming
-- Remote actor communication patterns
+- [ ] Enhanced security with encryption
+- [ ] Improved connection management
+- [ ] Background mode support
+- [ ] Performance optimizations
+- [ ] Additional platform support
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
 
 ## 📄 License
 
-Bleu is available under the MIT license. See the LICENSE file for more info.
+Bleu is available under the MIT license. See the [LICENSE](LICENSE) file for more info.
+
+## 🙏 Acknowledgments
+
+Special thanks to the Swift community and all contributors who have helped shape Bleu v2.
 
 ---
 
-**Bleu v2** - Modern Bluetooth Low Energy for Swift 6.1+
+<div align="center">
+  Made with ❤️ by the Bleu Team
+  
+  [Documentation](https://github.com/1amageek/Bleu/wiki) • [Issues](https://github.com/1amageek/Bleu/issues) • [Discussions](https://github.com/1amageek/Bleu/discussions)
+</div>

@@ -4,139 +4,291 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Bleu is a Swift framework for Bluetooth Low Energy (BLE) communication on iOS, macOS, watchOS, and tvOS. It provides a simplified abstraction layer over CoreBluetooth, using Server/Client terminology instead of Peripheral/Central.
+Bleu v2 is a next-generation Swift framework for Bluetooth Low Energy (BLE) communication that leverages Swift's Distributed Actor system to provide transparent, type-safe communication between BLE Peripherals and Centrals. It completely abstracts away the complexity of CoreBluetooth, allowing developers to write BLE applications as if they were simple distributed function calls.
 
-## Build Commands
+## Core Philosophy
 
-### Xcode Build
-```bash
-# Build for iOS
-xcodebuild -project Bleu.xcodeproj -scheme Bleu -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 15'
+**"Make BLE communication as simple as calling a function"**
 
-# Build for macOS
-xcodebuild -project Bleu.xcodeproj -scheme Bleu -sdk macosx
-
-# Clean build
-xcodebuild -project Bleu.xcodeproj -scheme Bleu clean
-```
-
-### CocoaPods
-```bash
-# Validate podspec
-pod spec lint Bleu.podspec --allow-warnings
-
-# Install dependencies for example project
-cd Example && pod install
-
-# Push to trunk (for maintainers)
-pod trunk push Bleu.podspec --allow-warnings
-```
+Developers should focus on their business logic, not BLE complexity. Bleu v2 handles all the details:
+- Service/Characteristic management → Automatic
+- UUID generation → Automatic
+- Connection management → Automatic
+- Data serialization → Automatic
+- Error recovery → Automatic
 
 ## Architecture
 
-### Core Protocol: Communicable
-The `Communicable` protocol is the foundation - all data exchanged via BLE must conform to it:
-- Requires `serviceUUID` and `characteristicUUID` properties
-- Handles data serialization/deserialization
-- Located in: `Bleu/Communicable.swift`
+### 4-Layer Architecture
 
-### Main Components
-
-1. **Bleu** (`Bleu/Bleu.swift`): Singleton entry point
-   - `Bleu.addObserver()` - Monitor bluetooth state changes
-   - `Bleu.removeObserver()` - Remove state observers
-
-2. **Beacon** (`Bleu/Beacon.swift`): BLE Server (Peripheral)
-   - Advertises services
-   - Handles incoming requests
-   - Sends responses to connected clients
-
-3. **Radar** (`Bleu/Radar.swift`): BLE Client (Central) 
-   - Discovers servers
-   - Manages connections
-   - Sends requests and receives responses
-
-4. **Request/Receiver** (`Bleu/Request.swift`, `Bleu/Receiver.swift`): Client-side communication
-   - Request: Sends data to server
-   - Receiver: Listens for server responses
-
-### Data Flow
 ```
-Client (Radar) → Request → Server (Beacon)
-                    ↓
-Client (Receiver) ← Response ← Server (Beacon)
+┌──────────────────────────────────────────┐
+│          User Application Layer          │
+│   distributed actor MyPeripheral { }      │  ← Developers write only this
+└────────────────▲─────────────────────────┘
+                 │ Transparent RPC
+┌────────────────┴─────────────────────────┐
+│         Bleu v2 Framework                │
+├──────────────────────────────────────────┤
+│  Layer 4: Public API                     │
+│    - BLEActorSystem                      │  ← Distributed Actor System
+│    - Automatic service registration      │
+├──────────────────────────────────────────┤
+│  Layer 3: Auto-Mapping System            │
+│    - ServiceMapper                       │  ← Method → Characteristic mapping
+│    - MethodRegistry                      │
+├──────────────────────────────────────────┤
+│  Layer 2: Message Transport              │
+│    - BLETransport                        │  ← Reliability & flow control
+│    - MessageRouter                       │
+├──────────────────────────────────────────┤
+│  Layer 1: BLE Abstraction                │
+│    - LocalPeripheralActor                │  ← CoreBluetooth wrappers
+│    - LocalCentralActor                   │
+└──────────────────────────────────────────┘
 ```
 
-## Key Implementation Patterns
+### Key Design Principles
 
-### Creating a Communicable Type
+1. **Separation of Concerns**: CoreBluetooth delegates never directly interact with distributed actors
+2. **Message Passing**: Local actors communicate with distributed actors via AsyncChannel
+3. **Actor Isolation**: No locks needed - all synchronization via actor boundaries
+4. **Type Safety**: Full type preservation across BLE communication
+
+## Usage
+
+### Peripheral Implementation (3 lines!)
+
 ```swift
-struct MyData: Communicable {
-    let serviceUUID: UUID = UUID(uuidString: "YOUR-SERVICE-UUID")!
-    let characteristicUUID: UUID = UUID(uuidString: "YOUR-CHARACTERISTIC-UUID")!
+distributed actor TemperatureSensor {
+    typealias ActorSystem = BLEActorSystem
     
-    // Your data properties
-    var value: String
-    
-    // Serialization
-    var data: Data? {
-        return value.data(using: .utf8)
+    distributed func readTemperature() async -> Double {
+        return 22.5
     }
+}
+
+// That's it! Start advertising:
+let sensor = TemperatureSensor(actorSystem: system)
+try await system.startAdvertising(sensor)
+```
+
+### Central Implementation (3 lines!)
+
+```swift
+// Discover and connect
+let sensors = try await system.discover(TemperatureSensor.self)
+
+// Use it like a local object
+let temp = try await sensors[0].readTemperature()
+```
+
+## Connection Flow
+
+### Phase 1: Peripheral Setup & Advertisement
+1. Extract distributed methods from actor type
+2. Generate deterministic Service/Characteristic UUIDs
+3. Create CBMutableService with characteristics
+4. Start advertising with service UUID
+
+### Phase 2: Central Discovery & Connection
+1. Calculate expected service UUID from actor type
+2. Scan for peripherals advertising that service
+3. Connect and discover services/characteristics
+4. Create remote actor proxy
+
+### Phase 3: Transparent Communication
+1. Method calls on remote actor trigger RPC
+2. Arguments serialized and sent via BLE
+3. Response deserialized and returned
+4. All async/await with full type safety
+
+## Implementation Guide
+
+### File Structure
+
+```
+Sources/Bleu/
+├── Core/
+│   ├── BLEActorSystem.swift        # Distributed actor system
+│   ├── BleuError.swift             # Error types
+│   └── BleuTypes.swift             # Common types
+├── LocalActors/
+│   ├── LocalPeripheralActor.swift  # CBPeripheralManager wrapper
+│   └── LocalCentralActor.swift     # CBCentralManager wrapper
+├── Mapping/
+│   ├── ServiceMapper.swift         # Auto service generation
+│   └── MethodRegistry.swift        # Method registration
+├── Transport/
+│   ├── BLETransport.swift          # Reliable transport
+│   └── MessageRouter.swift         # Message routing
+└── Extensions/
+    └── AsyncChannel.swift          # Event streaming
+```
+
+### Core Components
+
+#### BLEActorSystem
+- Conforms to `DistributedActorSystem`
+- Manages actor lifecycle
+- Handles `remoteCall` for RPC
+- Automatic service registration
+
+#### LocalPeripheralActor
+- Wraps `CBPeripheralManager`
+- Converts delegate callbacks to AsyncChannel events
+- Manages service/characteristic setup
+- Handles advertisement
+
+#### LocalCentralActor
+- Wraps `CBCentralManager`
+- Manages scanning and connection
+- Service/characteristic discovery
+- Connection state management
+
+#### ServiceMapper
+- Extracts distributed methods via Mirror API
+- Generates deterministic UUIDs
+- Creates service metadata
+- Maps methods to characteristics
+
+## Development Workflow
+
+### 1. Define Your Peripheral
+
+```swift
+distributed actor MyDevice {
+    typealias ActorSystem = BLEActorSystem
     
-    // Deserialization
-    init?(data: Data) {
-        guard let value = String(data: data, encoding: .utf8) else { return nil }
-        self.value = value
-    }
+    // Each distributed method becomes a BLE characteristic
+    distributed func getValue() async -> Int { 42 }
+    distributed func setValue(_ value: Int) async { }
+    distributed func subscribe() async -> AsyncStream<Int> { }
 }
 ```
 
-### Server Implementation
-- Use `Beacon` for advertising services
-- Call `startAdvertising()` to begin
-- Handle requests via `BeaconDelegate`
+### 2. Start Advertising
 
-### Client Implementation  
-- Use `Radar` for discovering servers
-- Create `Request` objects to send data
-- Use `Receiver` to listen for responses
+```swift
+let device = MyDevice(actorSystem: system)
+try await system.startAdvertising(device)
+```
+
+### 3. Discover & Connect from Central
+
+```swift
+let devices = try await system.discover(MyDevice.self)
+let value = try await devices[0].getValue()
+```
+
+## Build & Test
+
+### Build
+```bash
+swift build
+```
+
+### Test
+```bash
+swift test
+```
+
+### Platform-specific
+```bash
+# iOS
+xcodebuild -scheme Bleu -destination 'platform=iOS Simulator,name=iPhone 15 Pro'
+
+# macOS  
+xcodebuild -scheme Bleu -destination 'platform=macOS'
+```
 
 ## Platform Requirements
-- iOS 10.0+
-- macOS 10.10+
-- watchOS 3.0+
-- tvOS 9.0+
-- Swift 5.0+
 
-## Testing
-Currently no test suite exists. When adding tests:
-- Place unit tests in a `Tests/` directory
-- Test Communicable protocol conformance
-- Mock CoreBluetooth for testing BLE logic
+- iOS 18.0+
+- macOS 15.0+
+- watchOS 11.0+
+- tvOS 18.0+
+- Swift 6.1+
 
-## Common Development Tasks
+## Current Status
 
-### Adding a New Communicable Type
-1. Create struct/class conforming to `Communicable`
-2. Define unique service and characteristic UUIDs
-3. Implement data serialization/deserialization
-4. Add to Example app for testing
+### Phase 1: Foundation (In Progress)
+- [ ] Fix existing compilation errors
+- [ ] Remove NSLock usage
+- [ ] Implement LocalPeripheralActor
+- [ ] Implement LocalCentralActor
 
-### Debugging BLE Issues
-- Check bluetooth state via `Bleu.shared.state`
-- Enable verbose logging in CoreBluetooth
-- Use Console.app to view BLE system logs
-- Test with real devices (simulator has limitations)
+### Phase 2: Core Features
+- [ ] ServiceMapper implementation
+- [ ] MethodRegistry implementation
+- [ ] BLEActorSystem completion
+- [ ] Basic transport layer
 
-## Project Structure
+### Phase 3: Advanced Features
+- [ ] Automatic reconnection
+- [ ] Data compression
+- [ ] Encryption
+- [ ] Flow control
+
+## Common Issues
+
+### Distributed Actor Compilation Errors
+**Cause**: Delegates calling distributed actor methods directly
+**Fix**: Use LocalActors as intermediaries with message passing
+
+### NSLock in Async Context
+**Cause**: Legacy synchronization code
+**Fix**: Replace with actor isolation
+
+### Method Not Found
+**Cause**: Method not marked as `distributed`
+**Fix**: Add `distributed` keyword to methods that need RPC
+
+## Best Practices
+
+1. **Keep distributed methods simple** - Complex logic should be local
+2. **Use AsyncStream for notifications** - Built-in support for BLE notify/indicate
+3. **Let the system handle connections** - Don't manage CBPeripheral/CBCentral directly
+4. **Trust automatic reconnection** - System handles transient disconnections
+5. **Test on real devices** - Simulator has BLE limitations
+
+## Debugging
+
+```swift
+// Enable verbose logging
+BLEActorSystem.loggingLevel = .verbose
+
+// Monitor connection state
+system.onConnectionStateChange = { peripheral, state in
+    print("State: \(state)")
+}
+
+// Track discovery
+system.onPeripheralDiscovered = { peripheral in
+    print("Found: \(peripheral)")
+}
 ```
-Bleu/
-├── Bleu/              # Framework source
-│   ├── Beacon.swift   # Server implementation
-│   ├── Radar.swift    # Client implementation  
-│   ├── Request.swift  # Client request handling
-│   ├── Receiver.swift # Client response handling
-│   └── Communicable.swift # Core protocol
-├── Example/           # Sample application
-└── Bleu.podspec      # CocoaPods specification
-```
+
+## Example Applications
+
+### Examples/BasicUsage/
+- Simple temperature sensor
+- LED controller
+- Data logger
+
+### Examples/SwiftUIApp/
+- Full SwiftUI integration
+- Real-time charts
+- Device management UI
+
+### Examples/Common/
+- Shared actor definitions
+- Reusable UI components
+
+## Future Roadmap
+
+- **v2.1**: Mesh networking support
+- **v2.2**: Multi-peripheral connections
+- **v2.3**: Background mode optimization
+- **v2.4**: Linux support via BlueZ
+- **v3.0**: Cross-transport support (WiFi, NFC)
