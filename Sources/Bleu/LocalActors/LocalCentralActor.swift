@@ -1,6 +1,17 @@
 import Foundation
 @preconcurrency import CoreBluetooth
 
+/// Sendable representation of CBCharacteristic for safe Task boundary crossing
+public struct SendableCharacteristic: Sendable {
+    public let uuid: String
+    public let properties: UInt
+    
+    init(from characteristic: CBCharacteristic) {
+        self.uuid = characteristic.uuid.uuidString
+        self.properties = characteristic.properties.rawValue
+    }
+}
+
 /// Local actor that wraps CBCentralManager for BLE central operations
 public actor LocalCentralActor {
     private var centralManager: CBCentralManager?
@@ -24,8 +35,8 @@ public actor LocalCentralActor {
     private var serviceDiscoveryContinuations: [UUID: CheckedContinuation<[ServiceMetadata], Error>] = [:]
     private var characteristicDiscoveryContinuations: [UUID: CheckedContinuation<[CharacteristicMetadata], Error>] = [:]
     
-    // State continuation
-    private var stateContinuation: CheckedContinuation<CBManagerState, Never>?
+    // State continuations (support multiple waiters)
+    private var stateContinuations: [CheckedContinuation<CBManagerState, Never>] = []
     
     init() {}
     
@@ -38,13 +49,12 @@ public actor LocalCentralActor {
     /// Scan for peripherals with specified services
     public func scan(for services: [CBUUID], timeout: TimeInterval = 10.0) -> AsyncStream<DiscoveredPeripheral> {
         AsyncStream { continuation in
+            self.startScanning(for: services, continuation: continuation)
+            
             Task {
-                self.startScanning(for: services, continuation: continuation)
-                
                 // Set timeout
                 try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                self.stopScanning()
-                continuation.finish()
+                self.finishScanIfNeeded()
             }
         }
     }
@@ -55,16 +65,29 @@ public actor LocalCentralActor {
         scanContinuation = continuation
         isScanning = true
         
+        // Get configuration for scan options
+        Task {
+            let allowDuplicates = await BleuConfigurationManager.shared.current().allowDuplicatesInScan
+            self.performScan(services: services, allowDuplicates: allowDuplicates)
+        }
+    }
+    
+    private func performScan(services: [CBUUID], allowDuplicates: Bool) {
         centralManager?.scanForPeripherals(
             withServices: services.isEmpty ? nil : services,
             options: [
-                CBCentralManagerScanOptionAllowDuplicatesKey: false
+                CBCentralManagerScanOptionAllowDuplicatesKey: allowDuplicates
             ]
         )
     }
     
     /// Stop scanning
     public func stopScanning() {
+        finishScanIfNeeded()
+    }
+    
+    /// Finish scan if needed (idempotent)
+    private func finishScanIfNeeded() {
         guard isScanning else { return }
         
         isScanning = false
@@ -276,7 +299,7 @@ public actor LocalCentralActor {
         }
         
         return await withCheckedContinuation { continuation in
-            self.stateContinuation = continuation
+            self.stateContinuations.append(continuation)
         }
     }
     
@@ -307,28 +330,19 @@ public actor LocalCentralActor {
         }
     }
     
-    func handleCharacteristicDiscovery(for peripheralID: UUID, service: CBService, error: Error?) async {
+    func handleCharacteristicDiscovery(for peripheralID: UUID, serviceUUID: String, characteristics: [SendableCharacteristic]?, error: Error?) async {
         // Create metadata from characteristics
-        let metadata = service.characteristics?.map { characteristic -> CharacteristicMetadata in
+        let metadata = characteristics?.map { characteristic -> CharacteristicMetadata in
             // Use deterministic UUID for short UUIDs
-            let uuid = UUID(uuidString: characteristic.uuid.uuidString) ?? UUID.deterministic(from: characteristic.uuid.uuidString)
+            let uuid = UUID(uuidString: characteristic.uuid) ?? UUID.deterministic(from: characteristic.uuid)
             
-            // Convert CBCharacteristicProperties to CharacteristicProperties
-            var properties = CharacteristicProperties()
-            let cbProps = characteristic.properties
-            if cbProps.contains(.broadcast) { properties.insert(.broadcast) }
-            if cbProps.contains(.read) { properties.insert(.read) }
-            if cbProps.contains(.writeWithoutResponse) { properties.insert(.writeWithoutResponse) }
-            if cbProps.contains(.write) { properties.insert(.write) }
-            if cbProps.contains(.notify) { properties.insert(.notify) }
-            if cbProps.contains(.indicate) { properties.insert(.indicate) }
-            if cbProps.contains(.authenticatedSignedWrites) { properties.insert(.authenticatedSignedWrites) }
-            if cbProps.contains(.extendedProperties) { properties.insert(.extendedProperties) }
+            // Convert from rawValue to CharacteristicProperties
+            let properties = CharacteristicProperties(rawValue: characteristic.properties)
             
             return CharacteristicMetadata(
                 uuid: uuid,
                 properties: properties,
-                permissions: CharacteristicPermissions(), // CoreBluetooth doesn't expose permissions
+                permissions: CharacteristicPermissions(), // CoreBluetooth doesn't expose permissions on CBCharacteristic
                 descriptors: []
             )
         } ?? []
@@ -342,19 +356,19 @@ public actor LocalCentralActor {
         }
     }
     
-    func handleValueUpdate(for peripheralID: UUID, characteristic: CBCharacteristic, error: Error?) async {
-        let serviceUUID = if let svcUUID = characteristic.service?.uuid {
-            UUID(uuidString: svcUUID.uuidString) ?? UUID.deterministic(from: svcUUID.uuidString)
+    func handleValueUpdate(for peripheralID: UUID, characteristicUUID: String, serviceUUID: String?, value: Data?, error: Error?) async {
+        let svcUUID = if let svcUUID = serviceUUID {
+            UUID(uuidString: svcUUID) ?? UUID.deterministic(from: svcUUID)
         } else {
             UUID()
         }
-        let characteristicUUID = UUID(uuidString: characteristic.uuid.uuidString) ?? UUID.deterministic(from: characteristic.uuid.uuidString)
+        let charUUID = UUID(uuidString: characteristicUUID) ?? UUID.deterministic(from: characteristicUUID)
         
         await messageChannel.send(.characteristicValueUpdated(
             peripheralID,
-            serviceUUID,
-            characteristicUUID,
-            characteristic.value
+            svcUUID,
+            charUUID,
+            value
         ))
     }
 }
@@ -365,9 +379,9 @@ extension LocalCentralActor {
     func handleStateUpdate(_ state: CBManagerState) async {
         await messageChannel.send(.stateChanged(state))
         
-        if let continuation = stateContinuation {
-            continuation.resume(returning: state)
-            stateContinuation = nil
+        if state == .poweredOn && !stateContinuations.isEmpty {
+            stateContinuations.forEach { $0.resume(returning: state) }
+            stateContinuations.removeAll()
         }
     }
     
@@ -412,10 +426,13 @@ extension LocalCentralActor {
 
 // MARK: - PeripheralDelegate
 
-private class PeripheralDelegate: NSObject, CBPeripheralDelegate, @unchecked Sendable {
+// Note: Using NSLock for thread-safety as this delegate is called from CoreBluetooth's internal queue
+private final class PeripheralDelegate: NSObject, CBPeripheralDelegate, @unchecked Sendable {
     let peripheralID: UUID
     weak var actor: LocalCentralActor?
     
+    // Thread-safe continuation storage using NSLock
+    private let lock = NSLock()
     private var readContinuations: [CBUUID: CheckedContinuation<Data, Error>] = [:]
     private var writeContinuations: [CBUUID: CheckedContinuation<Void, Error>] = [:]
     private var notifyContinuations: [CBUUID: CheckedContinuation<Void, Error>] = [:]
@@ -428,21 +445,27 @@ private class PeripheralDelegate: NSObject, CBPeripheralDelegate, @unchecked Sen
     
     func readValue(for characteristic: CBCharacteristic, peripheral: CBPeripheral) async throws -> Data {
         try await withCheckedThrowingContinuation { continuation in
+            lock.lock()
             readContinuations[characteristic.uuid] = continuation
+            lock.unlock()
             peripheral.readValue(for: characteristic)
         }
     }
     
     func writeValue(_ data: Data, for characteristic: CBCharacteristic, peripheral: CBPeripheral) async throws {
         try await withCheckedThrowingContinuation { continuation in
+            lock.lock()
             writeContinuations[characteristic.uuid] = continuation
+            lock.unlock()
             peripheral.writeValue(data, for: characteristic, type: .withResponse)
         }
     }
     
     func setNotifyValue(_ enabled: Bool, for characteristic: CBCharacteristic, peripheral: CBPeripheral) async throws {
         try await withCheckedThrowingContinuation { continuation in
+            lock.lock()
             notifyContinuations[characteristic.uuid] = continuation
+            lock.unlock()
             peripheral.setNotifyValue(enabled, for: characteristic)
         }
     }
@@ -460,31 +483,48 @@ private class PeripheralDelegate: NSObject, CBPeripheralDelegate, @unchecked Sen
     }
     
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+        // Extract service info before Task boundary
+        let serviceUUID = service.uuid.uuidString
+        let characteristics = service.characteristics?.map { SendableCharacteristic(from: $0) }
+        
         Task { [weak self, peripheralID] in
             guard let self = self else { return }
-            // We pass the service directly since we marked the delegate as @unchecked Sendable
-            await self.actor?.handleCharacteristicDiscovery(for: peripheralID, service: service, error: error)
+            // Pass extracted values, not the CBService itself
+            await self.actor?.handleCharacteristicDiscovery(for: peripheralID, serviceUUID: serviceUUID, characteristics: characteristics, error: error)
         }
     }
     
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
-        if let continuation = readContinuations.removeValue(forKey: characteristic.uuid) {
+        // Extract values before Task boundary to avoid passing non-Sendable objects
+        let value = characteristic.value
+        let charUUID = characteristic.uuid.uuidString
+        let serviceUUID = characteristic.service?.uuid.uuidString
+        
+        lock.lock()
+        let continuation = readContinuations.removeValue(forKey: characteristic.uuid)
+        lock.unlock()
+        
+        if let continuation = continuation {
             if let error = error {
                 continuation.resume(throwing: error)
             } else {
-                continuation.resume(returning: characteristic.value ?? Data())
+                continuation.resume(returning: value ?? Data())
             }
         }
         
         Task { [weak self, peripheralID] in
             guard let self = self else { return }
-            // We pass the characteristic directly since we marked the delegate as @unchecked Sendable
-            await self.actor?.handleValueUpdate(for: peripheralID, characteristic: characteristic, error: error)
+            // Pass only extracted values, not the CBCharacteristic itself
+            await self.actor?.handleValueUpdate(for: peripheralID, characteristicUUID: charUUID, serviceUUID: serviceUUID, value: value, error: error)
         }
     }
     
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
-        if let continuation = writeContinuations.removeValue(forKey: characteristic.uuid) {
+        lock.lock()
+        let continuation = writeContinuations.removeValue(forKey: characteristic.uuid)
+        lock.unlock()
+        
+        if let continuation = continuation {
             if let error = error {
                 continuation.resume(throwing: error)
             } else {
@@ -494,7 +534,11 @@ private class PeripheralDelegate: NSObject, CBPeripheralDelegate, @unchecked Sen
     }
     
     func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
-        if let continuation = notifyContinuations.removeValue(forKey: characteristic.uuid) {
+        lock.lock()
+        let continuation = notifyContinuations.removeValue(forKey: characteristic.uuid)
+        lock.unlock()
+        
+        if let continuation = continuation {
             if let error = error {
                 continuation.resume(throwing: error)
             } else {

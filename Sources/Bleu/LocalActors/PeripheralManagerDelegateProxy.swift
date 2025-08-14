@@ -32,17 +32,31 @@ final class PeripheralManagerDelegateProxy: NSObject, CBPeripheralManagerDelegat
     
     public func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveRead request: CBATTRequest) {
         // Extract necessary data before Task
-        let characteristicUUID = request.characteristic.uuid.uuidString
-        let serviceUUID = request.characteristic.service?.uuid.uuidString
-        let offset = request.offset
+        let characteristicUUID = request.characteristic.uuid
         
-        Task { [weak actor, peripheral] in
-            await actor?.handleReadRequest(
-                characteristicUUID: characteristicUUID,
-                serviceUUID: serviceUUID,
-                offset: offset,
-                peripheral: peripheral,
-                request: request
+        // Handle the response in the delegate to avoid passing non-Sendable objects
+        Task { [weak actor] in
+            // Get the current value from the actor
+            let value = await actor?.currentValue(for: characteristicUUID)
+            
+            // Apply offset if needed
+            if let value = value, request.offset < value.count {
+                request.value = value.subdata(in: request.offset..<value.count)
+                peripheral.respond(to: request, withResult: .success)
+            } else if request.offset == 0 && value == nil {
+                // No value available
+                peripheral.respond(to: request, withResult: .readNotPermitted)
+            } else {
+                // Invalid offset or other error
+                peripheral.respond(to: request, withResult: .invalidOffset)
+            }
+            
+            // Notify the actor about the read request (for logging/tracking)
+            let charUUIDString = characteristicUUID.uuidString
+            let serviceUUIDString = request.characteristic.service?.uuid.uuidString
+            await actor?.trackReadRequest(
+                characteristicUUID: charUUIDString,
+                serviceUUID: serviceUUIDString
             )
         }
     }

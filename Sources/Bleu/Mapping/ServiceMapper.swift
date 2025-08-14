@@ -44,10 +44,42 @@ public struct ServiceMapper {
         var methods: [MethodInfo] = []
         
         // Use Mirror to inspect the type
-        // Note: In a real implementation, we would need to use more sophisticated
-        // reflection or code generation to extract distributed methods
+        // Note: This is a simplified implementation. A full implementation would require
+        // access to Swift's internal distributed actor runtime APIs or compile-time code generation.
+        // Current approach provides standard characteristics based on protocol conformance.
         
-        // For now, we'll define a standard set of characteristics based on common patterns
+        // Check for protocol conformance to determine characteristics
+        if type is any SensorPeripheral.Type {
+            // Sensor peripherals typically provide read-only measurements
+            methods.append(MethodInfo(
+                name: "readMeasurement",
+                characteristicUUID: UUID.characteristicUUID(for: "readMeasurement", in: type),
+                properties: [.read, .notify],
+                permissions: [.readable]
+            ))
+        }
+        
+        if type is any ActuatorPeripheral.Type {
+            // Actuator peripherals accept commands
+            methods.append(MethodInfo(
+                name: "execute",
+                characteristicUUID: UUID.characteristicUUID(for: "execute", in: type),
+                properties: [.write],
+                permissions: [.writeable]
+            ))
+        }
+        
+        if type is any NotifyingPeripheral.Type {
+            // Notifying peripherals support notifications
+            methods.append(MethodInfo(
+                name: "notifications",
+                characteristicUUID: UUID.characteristicUUID(for: "notifications", in: type),
+                properties: [.notify, .indicate],
+                permissions: [.readable]
+            ))
+        }
+        
+        // Always add standard characteristics for basic operations
         
         // Standard read characteristic (for getter-like methods)
         methods.append(MethodInfo(

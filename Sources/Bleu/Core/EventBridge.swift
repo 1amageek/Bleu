@@ -100,7 +100,11 @@ public actor EventBridge {
         await withTaskGroup(of: Void.self) { group in
             for (_, handler) in eventHandlers {
                 group.addTask {
-                    try? await handler(event)
+                    do {
+                        try await handler(event)
+                    } catch {
+                        BleuLogger.actorSystem.error("Event handler failed: \(error.localizedDescription)")
+                    }
                 }
             }
         }
@@ -142,12 +146,16 @@ public actor EventBridge {
             if let subscribers = characteristicSubscriptions[characteristicUUID] {
                 for actorID in subscribers {
                     if let handler = eventHandlers[actorID] {
-                        try? await handler(.characteristicValueUpdated(
-                            peripheralID,
-                            UUID(), // service UUID would need to be tracked separately
-                            characteristicUUID,
-                            data
-                        ))
+                        do {
+                            try await handler(.characteristicValueUpdated(
+                                peripheralID,
+                                UUID(), // service UUID would need to be tracked separately
+                                characteristicUUID,
+                                data
+                            ))
+                        } catch {
+                            BleuLogger.actorSystem.error("Characteristic update handler failed: \(error.localizedDescription)")
+                        }
                     }
                 }
             }
@@ -164,20 +172,39 @@ public actor EventBridge {
         // Route to the target actor
         if let handler = eventHandlers[envelope.actorID] {
             // Create a synthetic event for the RPC invocation
-            try? await handler(.writeRequestReceived(
-                envelope.actorID,
-                UUID(), // service UUID would be determined by the actor
-                characteristicUUID,
-                data
-            ))
+            do {
+                try await handler(.writeRequestReceived(
+                    envelope.actorID,
+                    UUID(), // service UUID would be determined by the actor
+                    characteristicUUID,
+                    data
+                ))
+            } catch {
+                BleuLogger.actorSystem.error("Write request handler failed: \(error.localizedDescription)")
+            }
         }
     }
     
     // MARK: - RPC Support
     
+    /// Atomically take and remove a pending call continuation
+    private func takePending(_ id: UUID) -> CheckedContinuation<ResponseEnvelope, Error>? {
+        let cont = pendingCalls.removeValue(forKey: id)
+        if let peripheralID = callToPeripheral.removeValue(forKey: id) {
+            peripheralCalls[peripheralID]?.remove(id)
+            if peripheralCalls[peripheralID]?.isEmpty == true {
+                peripheralCalls.removeValue(forKey: peripheralID)
+            }
+        }
+        return cont
+    }
+    
     /// Register a pending RPC call
     public func registerRPCCall(_ id: UUID, peripheralID: UUID? = nil) async throws -> ResponseEnvelope {
-        try await withCheckedThrowingContinuation { continuation in
+        // Get timeout from configuration
+        let timeoutSec = await BleuConfigurationManager.shared.current().rpcTimeout
+        
+        return try await withCheckedThrowingContinuation { continuation in
             pendingCalls[id] = continuation
             
             // Track peripheral association if provided
@@ -189,18 +216,11 @@ public actor EventBridge {
                 peripheralCalls[peripheralID]?.insert(id)
             }
             
-            // Set timeout
+            // Set timeout using configuration
             Task {
-                try? await Task.sleep(nanoseconds: 10_000_000_000) // 10 seconds
-                if let continuation = pendingCalls.removeValue(forKey: id) {
-                    // Clean up peripheral tracking
-                    if let peripheralID = callToPeripheral.removeValue(forKey: id) {
-                        peripheralCalls[peripheralID]?.remove(id)
-                        if peripheralCalls[peripheralID]?.isEmpty == true {
-                            peripheralCalls.removeValue(forKey: peripheralID)
-                        }
-                    }
-                    continuation.resume(throwing: BleuError.connectionTimeout)
+                try? await Task.sleep(nanoseconds: UInt64(timeoutSec * 1_000_000_000))
+                if let cont = self.takePending(id) {
+                    cont.resume(throwing: BleuError.connectionTimeout)
                 }
             }
         }
@@ -208,21 +228,18 @@ public actor EventBridge {
     
     /// Handle an RPC response
     private func handleRPCResponse(_ envelope: ResponseEnvelope) async {
-        if let continuation = pendingCalls.removeValue(forKey: envelope.id) {
-            continuation.resume(returning: envelope)
-        }
-        
-        // Clean up tracking maps
-        if let peripheralID = callToPeripheral.removeValue(forKey: envelope.id) {
-            peripheralCalls[peripheralID]?.remove(envelope.id)
-            if peripheralCalls[peripheralID]?.isEmpty == true {
-                peripheralCalls.removeValue(forKey: peripheralID)
-            }
+        // Atomically take the continuation to avoid race conditions
+        if let cont = takePending(envelope.id) {
+            cont.resume(returning: envelope)
         }
         
         // Also notify any response handlers
         if let handler = responseHandlers.removeValue(forKey: envelope.id) {
-            try? await handler(envelope)
+            do {
+                try await handler(envelope)
+            } catch {
+                BleuLogger.actorSystem.error("Response handler failed for envelope \(envelope.id): \(error.localizedDescription)")
+            }
         }
     }
     
@@ -239,8 +256,9 @@ public actor EventBridge {
         if let callIDs = peripheralCalls.removeValue(forKey: peripheralID) {
             for callID in callIDs {
                 callToPeripheral.removeValue(forKey: callID)
-                if let continuation = pendingCalls.removeValue(forKey: callID) {
-                    continuation.resume(throwing: BleuError.disconnected)
+                // Atomically take the continuation
+                if let cont = pendingCalls.removeValue(forKey: callID) {
+                    cont.resume(throwing: BleuError.disconnected)
                 }
             }
         }

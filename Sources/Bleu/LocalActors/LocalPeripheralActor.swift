@@ -13,7 +13,7 @@ public actor LocalPeripheralActor {
     private var rpcCharacteristics: Set<UUID> = []  // Track RPC characteristics
     
     // Continuations for async operations
-    private var stateContinuation: CheckedContinuation<CBManagerState, Never>?
+    private var stateContinuations: [CheckedContinuation<CBManagerState, Never>] = []
     private var advertisingContinuation: CheckedContinuation<Void, Error>?
     
     init() {}
@@ -136,8 +136,31 @@ public actor LocalPeripheralActor {
         }
         
         return await withCheckedContinuation { continuation in
-            self.stateContinuation = continuation
+            self.stateContinuations.append(continuation)
         }
+    }
+}
+
+// MARK: - Delegate Support Methods
+
+extension LocalPeripheralActor {
+    /// Get the current value for a characteristic
+    public func currentValue(for characteristicUUID: CBUUID) -> Data? {
+        let uuid = UUID(uuidString: characteristicUUID.uuidString) ?? UUID.deterministic(from: characteristicUUID.uuidString)
+        return characteristics[uuid]?.value
+    }
+    
+    /// Track a read request for logging/monitoring
+    public func trackReadRequest(characteristicUUID: String, serviceUUID: String?) async {
+        guard let charUUID = UUID(uuidString: characteristicUUID) else { return }
+        let svcUUID = serviceUUID.flatMap(UUID.init(uuidString:)) ?? UUID()
+        
+        // Send event for tracking
+        await messageChannel.send(.readRequestReceived(
+            UUID(),  // We don't have central ID here
+            svcUUID,
+            charUUID
+        ))
     }
 }
 
@@ -147,9 +170,9 @@ extension LocalPeripheralActor {
     func handleStateUpdate(_ state: CBManagerState) async {
         await messageChannel.send(.stateChanged(state))
         
-        if let continuation = stateContinuation {
-            continuation.resume(returning: state)
-            stateContinuation = nil
+        if state == .poweredOn && !stateContinuations.isEmpty {
+            stateContinuations.forEach { $0.resume(returning: state) }
+            stateContinuations.removeAll()
         }
     }
     
@@ -172,36 +195,6 @@ extension LocalPeripheralActor {
         }
     }
     
-    func handleReadRequest(
-        characteristicUUID: String,
-        serviceUUID: String?,
-        offset: Int,
-        peripheral: CBPeripheralManager,
-        request: CBATTRequest
-    ) async {
-        // Parse UUIDs
-        guard let charUUID = UUID(uuidString: characteristicUUID) else {
-            peripheral.respond(to: request, withResult: .invalidHandle)
-            return
-        }
-        
-        let svcUUID = serviceUUID.flatMap(UUID.init(uuidString:)) ?? UUID()
-        
-        // Send event
-        await messageChannel.send(.readRequestReceived(
-            UUID(),  // We don't have central ID here - this is a limitation of CoreBluetooth
-            svcUUID,
-            charUUID
-        ))
-        
-        // Respond with current value
-        if let value = request.characteristic.value {
-            request.value = value
-            peripheral.respond(to: request, withResult: .success)
-        } else {
-            peripheral.respond(to: request, withResult: .readNotPermitted)
-        }
-    }
     
     func handleWriteRequests(
         _ extractedRequests: [(serviceUUID: String?, characteristicUUID: String, value: Data?, offset: Int)]

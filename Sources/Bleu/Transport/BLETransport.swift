@@ -69,7 +69,8 @@ public actor BLETransport {
     // Transport state
     private var reassemblyBuffers: [UUID: ReassemblyBuffer] = [:]
     private var outgoingQueue: [Packet] = []
-    private let reassemblyTimeout: TimeInterval = 30.0
+    private var cleanupTask: Task<Void, Never>?
+    private let configManager = BleuConfigurationManager.shared
     
     /// Shared instance
     public static let shared = BLETransport(defaultWriteLength: 512)
@@ -79,8 +80,19 @@ public actor BLETransport {
         
         // Start cleanup task for timed-out reassembly buffers
         Task {
+            await self.assignCleanupTask()
+        }
+    }
+    
+    private func assignCleanupTask() {
+        cleanupTask = Task {
             await startCleanupTask()
         }
+    }
+    
+    deinit {
+        // Cancel cleanup task when transport is deallocated
+        cleanupTask?.cancel()
     }
     
     /// Update maximum payload size based on negotiated MTU
@@ -162,17 +174,35 @@ public actor BLETransport {
         
         var offset = 16
         
+        // Helper to read bytes safely without alignment issues
+        func readU16() -> UInt16? {
+            guard data.count >= offset + 2 else { return nil }
+            let b0 = UInt16(data[offset])
+            let b1 = UInt16(data[offset + 1])
+            offset += 2
+            // Big-endian: most significant byte first
+            return (b0 << 8) | b1
+        }
+        
+        func readU32() -> UInt32? {
+            guard data.count >= offset + 4 else { return nil }
+            let b0 = UInt32(data[offset])
+            let b1 = UInt32(data[offset + 1])
+            let b2 = UInt32(data[offset + 2])
+            let b3 = UInt32(data[offset + 3])
+            offset += 4
+            // Big-endian: most significant byte first
+            return (b0 << 24) | (b1 << 16) | (b2 << 8) | b3
+        }
+        
         // Sequence number (2 bytes)
-        let seq = data[offset..<offset+2].withUnsafeBytes { $0.load(as: UInt16.self).bigEndian }
-        offset += 2
+        guard let seq = readU16() else { return nil }
         
         // Total packets (2 bytes)
-        let total = data[offset..<offset+2].withUnsafeBytes { $0.load(as: UInt16.self).bigEndian }
-        offset += 2
+        guard let total = readU16() else { return nil }
         
         // Checksum (4 bytes)
-        let checksum = data[offset..<offset+4].withUnsafeBytes { $0.load(as: UInt32.self).bigEndian }
-        offset += 4
+        guard let checksum = readU32() else { return nil }
         
         // Payload
         let payload = data.suffix(from: offset)
@@ -268,10 +298,11 @@ public actor BLETransport {
     }
     
     /// Cleanup timed-out reassembly buffers
-    private func cleanupTimedOutBuffers() {
+    private func cleanupTimedOutBuffers() async {
         let now = Date()
+        let timeout = await configManager.current().reassemblyTimeout
         let timedOutIDs = reassemblyBuffers.compactMap { (id, buffer) -> UUID? in
-            if now.timeIntervalSince(buffer.startTime) > reassemblyTimeout {
+            if now.timeIntervalSince(buffer.startTime) > timeout {
                 return id
             }
             return nil
@@ -285,10 +316,21 @@ public actor BLETransport {
     
     /// Start periodic cleanup task
     private func startCleanupTask() async {
-        while true {
-            cleanupTimedOutBuffers()
-            try? await Task.sleep(nanoseconds: 10_000_000_000) // 10 seconds
+        while !Task.isCancelled {
+            await cleanupTimedOutBuffers()
+            
+            // Use Task.sleep with cancellation support
+            let interval = await configManager.current().cleanupInterval
+            do {
+                try await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+            } catch {
+                // Task was cancelled, exit gracefully
+                break
+            }
         }
+        
+        // Clean up any remaining buffers on cancellation
+        await cleanupTimedOutBuffers()
     }
     
     /// Get statistics

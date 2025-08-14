@@ -3,8 +3,19 @@ import CoreBluetooth
 import Distributed
 import os
 
+/// Actor to manage system initialization state
+public actor BLEActorSystemBootstrap {
+    private(set) var isReady = false
+    
+    func markReady() {
+        isReady = true
+    }
+}
+
 /// Distributed Actor System for BLE communication
-public final class BLEActorSystem: DistributedActorSystem, @unchecked Sendable {
+/// Note: This class is inherently thread-safe because all mutable state is managed
+/// through actors (ProxyManager, BLEActorSystemBootstrap) or immutable/sendable references
+public final class BLEActorSystem: DistributedActorSystem, Sendable {
     public typealias ActorID = UUID
     public typealias InvocationDecoder = BLEInvocationDecoder
     public typealias InvocationEncoder = BLEInvocationEncoder
@@ -44,6 +55,14 @@ public final class BLEActorSystem: DistributedActorSystem, @unchecked Sendable {
     }
     
     private let proxyManager = ProxyManager()
+    private let bootstrap = BLEActorSystemBootstrap()
+    
+    /// Check if the system is ready for operations
+    public var ready: Bool {
+        get async {
+            await bootstrap.isReady
+        }
+    }
     
     public init() {
         self.localPeripheral = LocalPeripheralActor()
@@ -53,6 +72,7 @@ public final class BLEActorSystem: DistributedActorSystem, @unchecked Sendable {
             await localPeripheral.initialize()
             await localCentral.initialize()
             await setupEventHandlers()
+            await bootstrap.markReady()
         }
     }
     
@@ -202,20 +222,31 @@ public final class BLEActorSystem: DistributedActorSystem, @unchecked Sendable {
     public func handleIncomingRPC(_ envelope: InvocationEnvelope) async -> ResponseEnvelope {
         do {
             // Get the target actor from registry
-            let registry = InstanceRegistry.shared
+            let instanceRegistry = InstanceRegistry.shared
+            let methodRegistry = MethodRegistry.shared
             
             // Check if actor is registered locally
-            guard await registry.isRegistered(envelope.actorID) else {
+            guard await instanceRegistry.isRegistered(envelope.actorID) else {
                 let error = BleuError.actorNotFound(envelope.actorID)
                 let errorData = try JSONEncoder().encode(error)
                 return ResponseEnvelope(id: envelope.id, error: errorData)
             }
             
-            // NOTE: Actual method execution requires access to Swift's internal distributed runtime APIs
-            // which are not publicly available. This will be supported when Swift exposes these APIs.
-            let error = BleuError.methodNotSupported(envelope.methodName)
-            let errorData = try JSONEncoder().encode(error)
-            return ResponseEnvelope(id: envelope.id, error: errorData)
+            // Check if method is registered
+            guard await methodRegistry.hasMethod(actorID: envelope.actorID, methodName: envelope.methodName) else {
+                let error = BleuError.methodNotSupported(envelope.methodName)
+                let errorData = try JSONEncoder().encode(error)
+                return ResponseEnvelope(id: envelope.id, error: errorData)
+            }
+            
+            // Execute the method using the registry
+            let resultData = try await methodRegistry.execute(
+                actorID: envelope.actorID,
+                methodName: envelope.methodName,
+                arguments: envelope.arguments
+            )
+            
+            return ResponseEnvelope(id: envelope.id, result: resultData)
             
         } catch {
             // Return error response
@@ -234,6 +265,11 @@ public final class BLEActorSystem: DistributedActorSystem, @unchecked Sendable {
     
     /// Start advertising as a peripheral
     public func startAdvertising<T: PeripheralActor>(_ peripheral: T) async throws {
+        // Ensure system is ready
+        guard await ready else {
+            throw BleuError.bluetoothUnavailable
+        }
+        
         // Get service metadata from the actor type
         let metadata = ServiceMapper.createServiceMetadata(from: T.self)
         
@@ -265,6 +301,11 @@ public final class BLEActorSystem: DistributedActorSystem, @unchecked Sendable {
         _ type: T.Type,
         timeout: TimeInterval = 10.0
     ) async throws -> [T] {
+        // Ensure system is ready
+        guard await ready else {
+            throw BleuError.bluetoothUnavailable
+        }
+        
         let serviceUUID = UUID.serviceUUID(for: type)
         
         var discoveredActors: [T] = []
@@ -279,6 +320,8 @@ public final class BLEActorSystem: DistributedActorSystem, @unchecked Sendable {
             // Create remote actor reference
             do {
                 let actor = try T.resolve(id: discovered.id, using: self)
+                // Register the remote actor in the instance registry
+                await instanceRegistry.registerRemote(actor, peripheralID: discovered.id)
                 discoveredActors.append(actor)
             } catch {
                 // Log and continue with next peripheral
@@ -305,6 +348,10 @@ public final class BLEActorSystem: DistributedActorSystem, @unchecked Sendable {
         
         // Create remote actor reference
         let actor = try T.resolve(id: peripheralID, using: self)
+        
+        // Register the remote actor in the instance registry
+        await instanceRegistry.registerRemote(actor, peripheralID: peripheralID)
+        
         return actor
     }
     

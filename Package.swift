@@ -16,9 +16,13 @@ let package = Package(
             name: "Bleu",
             targets: ["Bleu"]
         ),
+        .executable(
+            name: "BleuDemo",
+            targets: ["BleuDemo"]
+        ),
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-testing.git", from: "0.4.0")
+        // Swift Testing is now included in Swift 6 toolchain
     ],
     targets: [
         .target(
@@ -26,11 +30,15 @@ let package = Package(
             dependencies: [],
             path: "Sources/Bleu"
         ),
+        .executableTarget(
+            name: "BleuDemo",
+            dependencies: ["Bleu"],
+            path: "Sources/BleuDemo"
+        ),
         .testTarget(
             name: "BleuTests",
             dependencies: [
-                "Bleu",
-                .product(name: "Testing", package: "swift-testing")
+                "Bleu"
             ],
             path: "Tests/BleuTests"
         ),

@@ -43,6 +43,24 @@ public distributed actor DeviceInfoPeripheral: PeripheralActor {
         self.firmwareVersion = firmwareVersion
         self.hardwareVersion = hardwareVersion
         self.serialNumber = serialNumber
+        
+        // Register distributed methods
+        Task { [weak self] in
+            guard let self = self else { return }
+            let registry = MethodRegistry.shared
+            let actorID = self.id
+            
+            // Register getDeviceInfo method
+            await registry.register(
+                actorID: actorID,
+                methodName: "getDeviceInfo",
+                handler: { [weak self] _ in
+                    guard let self = self else { throw BleuError.actorNotFound(actorID) }
+                    let result = try await self.getDeviceInfo()
+                    return try JSONEncoder().encode(result)
+                }
+            )
+        }
     }
     
     /// デバイス情報を取得
@@ -82,6 +100,12 @@ public distributed actor SensorPeripheral: PeripheralActor {
     public init(actorSystem: ActorSystem) {
         self.actorSystem = actorSystem
         
+        // Register distributed methods
+        Task { [weak self] in
+            guard let self = self else { return }
+            try? await self.registerSensorMethods()
+        }
+        
         // Simulate sensor data changes
         Task { [weak self] in
             while true {
@@ -91,6 +115,55 @@ public distributed actor SensorPeripheral: PeripheralActor {
                 try? await self.simulateValueChanges()
             }
         }
+    }
+    
+    distributed func registerSensorMethods() async {
+        let registry = MethodRegistry.shared
+        let actorID = self.id
+        
+        // Register getTemperature method
+        await registry.register(
+            actorID: actorID,
+            methodName: "getTemperature",
+            handler: { [weak self] _ in
+                guard let self = self else { throw BleuError.actorNotFound(actorID) }
+                let result = try await self.getTemperature()
+                return try JSONEncoder().encode(result)
+            }
+        )
+        
+        // Register getHumidity method
+        await registry.register(
+            actorID: actorID,
+            methodName: "getHumidity",
+            handler: { [weak self] _ in
+                guard let self = self else { throw BleuError.actorNotFound(actorID) }
+                let result = try await self.getHumidity()
+                return try JSONEncoder().encode(result)
+            }
+        )
+        
+        // Register getPressure method
+        await registry.register(
+            actorID: actorID,
+            methodName: "getPressure",
+            handler: { [weak self] _ in
+                guard let self = self else { throw BleuError.actorNotFound(actorID) }
+                let result = try await self.getPressure()
+                return try JSONEncoder().encode(result)
+            }
+        )
+        
+        // Register getAllSensorData method
+        await registry.register(
+            actorID: actorID,
+            methodName: "getAllSensorData",
+            handler: { [weak self] _ in
+                guard let self = self else { throw BleuError.actorNotFound(actorID) }
+                let result = try await self.getAllSensorData()
+                return try JSONEncoder().encode(result)
+            }
+        )
     }
     
     /// 温度を取得
@@ -214,6 +287,68 @@ public distributed actor ControlPeripheral: PeripheralActor {
     
     public init(actorSystem: ActorSystem) {
         self.actorSystem = actorSystem
+        
+        // Register distributed methods
+        Task { [weak self] in
+            guard let self = self else { return }
+            try? await self.registerControlMethods()
+        }
+    }
+    
+    distributed func registerControlMethods() async {
+        let registry = MethodRegistry.shared
+        let actorID = self.id
+        
+        // Register setLED method
+        await registry.register(
+            actorID: actorID,
+            methodName: "setLED",
+            handler: { [weak self] data in
+                guard let self = self else { throw BleuError.actorNotFound(actorID) }
+                // Decode the arguments
+                struct SetLEDArgs: Codable {
+                    let on: Bool
+                    let color: LEDColor?
+                }
+                let args = try JSONDecoder().decode(SetLEDArgs.self, from: data)
+                let result = try await self.setLED(on: args.on, color: args.color)
+                return try JSONEncoder().encode(result)
+            }
+        )
+        
+        // Register getLEDStatus method
+        await registry.register(
+            actorID: actorID,
+            methodName: "getLEDStatus",
+            handler: { [weak self] _ in
+                guard let self = self else { throw BleuError.actorNotFound(actorID) }
+                let result = try await self.getLEDStatus()
+                return try JSONEncoder().encode(result)
+            }
+        )
+        
+        // Register setMotorSpeed method
+        await registry.register(
+            actorID: actorID,
+            methodName: "setMotorSpeed",
+            handler: { [weak self] data in
+                guard let self = self else { throw BleuError.actorNotFound(actorID) }
+                let speed = try JSONDecoder().decode(Double.self, from: data)
+                let result = try await self.setMotorSpeed(speed)
+                return try JSONEncoder().encode(result)
+            }
+        )
+        
+        // Register getMotorStatus method
+        await registry.register(
+            actorID: actorID,
+            methodName: "getMotorStatus",
+            handler: { [weak self] _ in
+                guard let self = self else { throw BleuError.actorNotFound(actorID) }
+                let result = try await self.getMotorStatus()
+                return try JSONEncoder().encode(result)
+            }
+        )
     }
     
     /// LED状態を設定

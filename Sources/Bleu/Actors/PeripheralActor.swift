@@ -3,16 +3,13 @@ import Distributed
 
 /// Protocol for all BLE peripheral actors
 public protocol PeripheralActor: DistributedActor where ActorSystem == BLEActorSystem {
-    /// The unique identifier of this peripheral
-    nonisolated var id: UUID { get }
+    // DistributedActor already provides nonisolated let id: ID (which is BLEActorSystem.ActorID)
+    // No need to redefine id here
 }
-
-// Note: Each PeripheralActor implementation must provide its own id property.
-// The BLEActorSystem will use the actor's ID which corresponds to the peripheral's UUID.
 
 /// Protocol for sensor peripherals
 public protocol SensorPeripheral: PeripheralActor {
-    associatedtype MeasurementType: Codable
+    associatedtype MeasurementType: Codable & Sendable
     
     /// Read the current measurement
     distributed func readMeasurement() async throws -> MeasurementType
@@ -20,7 +17,7 @@ public protocol SensorPeripheral: PeripheralActor {
 
 /// Protocol for actuator peripherals
 public protocol ActuatorPeripheral: PeripheralActor {
-    associatedtype CommandType: Codable
+    associatedtype CommandType: Codable & Sendable
     
     /// Execute a command
     distributed func execute(_ command: CommandType) async throws
@@ -28,7 +25,7 @@ public protocol ActuatorPeripheral: PeripheralActor {
 
 /// Protocol for peripherals that support notifications
 public protocol NotifyingPeripheral: PeripheralActor {
-    associatedtype NotificationType: Codable
+    associatedtype NotificationType: Codable & Sendable
     
     // Note: AsyncStream cannot be used as a return type for distributed methods
     // as it doesn't conform to Codable. Use polling or callback patterns instead.
