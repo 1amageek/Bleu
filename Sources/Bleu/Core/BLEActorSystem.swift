@@ -297,6 +297,17 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
     // MARK: - Central Mode
     
     /// Discover peripherals of a specific type
+    ///
+    /// This method scans for BLE peripherals advertising the service UUID
+    /// associated with the specified actor type, connects to each discovered
+    /// peripheral, and returns an array of ready-to-use actor references.
+    ///
+    /// - Parameter type: The distributed actor type to discover
+    /// - Parameter timeout: Maximum time to scan for peripherals (default: 10.0s)
+    /// - Returns: Array of connected, ready-to-use peripheral actors
+    ///
+    /// - Note: Peripherals that fail connection or setup are logged and skipped.
+    ///         The method returns successfully with all successfully connected actors.
     public func discover<T: PeripheralActor>(
         _ type: T.Type,
         timeout: TimeInterval = 10.0
@@ -305,30 +316,72 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         guard await ready else {
             throw BleuError.bluetoothUnavailable
         }
-        
+
         let serviceUUID = UUID.serviceUUID(for: type)
-        
         var discoveredActors: [T] = []
-        
+
         for await discovered in await localCentral.scan(
             for: [CBUUID(nsuuid: serviceUUID)],
             timeout: timeout
         ) {
-            // Setup proxy for remote peripheral
-            await setupRemoteProxy(id: discovered.id, type: type)
-            
-            // Create remote actor reference
             do {
+                // Connect to the peripheral first
+                try await localCentral.connect(to: discovered.id, timeout: 10.0)
+
+                // Update BLETransport MTU based on connected peripheral
+                await updateTransportMTU(for: discovered.id)
+
+                // Setup proxy for remote peripheral (now throws errors)
+                try await setupRemoteProxy(id: discovered.id, type: type)
+
+                // Create remote actor reference
                 let actor = try T.resolve(id: discovered.id, using: self)
+
                 // Register the remote actor in the instance registry
                 await instanceRegistry.registerRemote(actor, peripheralID: discovered.id)
+
+                // Add to results
                 discoveredActors.append(actor)
+
+                BleuLogger.actorSystem.info("Successfully discovered and connected to \(discovered.id)")
+
+            } catch let error as BleuError {
+                // Structured error logging for known error types
+                switch error {
+                case .connectionTimeout:
+                    BleuLogger.actorSystem.warning("Connection timeout for \(discovered.id)")
+                case .connectionFailed(let message):
+                    BleuLogger.actorSystem.warning("Connection failed for \(discovered.id): \(message)")
+                case .serviceNotFound(let uuid):
+                    BleuLogger.actorSystem.warning("Service \(uuid) not found on \(discovered.id)")
+                case .characteristicNotFound(let uuid):
+                    BleuLogger.actorSystem.warning("Characteristic \(uuid) not found on \(discovered.id)")
+                case .peripheralNotFound(let uuid):
+                    BleuLogger.actorSystem.warning("Peripheral \(uuid) not found")
+                default:
+                    BleuLogger.actorSystem.warning("Setup failed for \(discovered.id): \(error)")
+                }
+
+                // Cleanup: remove any partial state and disconnect
+                await cleanupPeripheralState(discovered.id)
+                try? await localCentral.disconnect(from: discovered.id)
+
+                // Continue with next peripheral
+                continue
+
             } catch {
-                // Log and continue with next peripheral
-                BleuLogger.actorSystem.warning("Failed to resolve actor for \(discovered.id): \(error.localizedDescription)")
+                // Unexpected errors (non-BleuError)
+                BleuLogger.actorSystem.error("Unexpected error setting up \(discovered.id): \(error)")
+
+                // Cleanup: remove any partial state and disconnect
+                await cleanupPeripheralState(discovered.id)
+                try? await localCentral.disconnect(from: discovered.id)
+
+                // Continue with next peripheral
+                continue
             }
         }
-        
+
         return discoveredActors
     }
     
@@ -339,24 +392,27 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
     ) async throws -> T {
         // Connect if not already connected
         try await localCentral.connect(to: peripheralID)
-        
+
         // Update BLETransport MTU based on connected peripheral
         await updateTransportMTU(for: peripheralID)
-        
-        // Setup proxy for remote peripheral
-        await setupRemoteProxy(id: peripheralID, type: type)
-        
+
+        // Setup proxy for remote peripheral (now throws)
+        try await setupRemoteProxy(id: peripheralID, type: type)
+
         // Create remote actor reference
         let actor = try T.resolve(id: peripheralID, using: self)
-        
+
         // Register the remote actor in the instance registry
         await instanceRegistry.registerRemote(actor, peripheralID: peripheralID)
-        
+
         return actor
     }
     
     /// Disconnect from a peripheral
     public func disconnect(from peripheralID: UUID) async throws {
+        // Cleanup proxy and subscriptions before disconnecting
+        await cleanupPeripheralState(peripheralID)
+
         defer { resignID(peripheralID) }
         try await localCentral.disconnect(from: peripheralID)
     }
@@ -367,7 +423,23 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
     }
     
     // MARK: - Private Helpers
-    
+
+    /// Cleanup all state associated with a peripheral
+    /// - Parameter peripheralID: The UUID of the peripheral to cleanup
+    /// - Note: This method is idempotent and safe to call multiple times
+    private func cleanupPeripheralState(_ peripheralID: UUID) async {
+        // Remove proxy from ProxyManager
+        await proxyManager.remove(peripheralID)
+
+        // Unsubscribe from EventBridge
+        await eventBridge.unsubscribe(peripheralID)
+
+        // Unregister RPC characteristic mapping
+        await eventBridge.unregisterRPCCharacteristic(for: peripheralID)
+
+        BleuLogger.actorSystem.debug("Cleaned up state for peripheral \(peripheralID)")
+    }
+
     /// Update BLETransport MTU based on connected peripheral
     private func updateTransportMTU(for peripheralID: UUID) async {
         // Get the maximum write value length for the connected peripheral
@@ -378,69 +450,73 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
     }
     
     /// Setup a proxy for a remote peripheral
-    private func setupRemoteProxy<T: PeripheralActor>(id: UUID, type: T.Type) async {
-        // Check if proxy already exists to prevent duplicates
-        if await proxyManager.get(id) != nil { 
-            return 
+    /// - Precondition: The peripheral MUST be connected via LocalCentralActor
+    /// - Throws: BleuError if setup fails
+    /// - Note: This method is transactional - either all setup succeeds or nothing is registered
+    private func setupRemoteProxy<T: PeripheralActor>(id: UUID, type: T.Type) async throws {
+        // Check if proxy already exists to prevent duplicates (idempotent)
+        if await proxyManager.get(id) != nil {
+            return
         }
-        
+
         // Calculate service and RPC characteristic UUIDs for this actor type
         let serviceUUID = UUID.serviceUUID(for: type)
         let rpcCharUUID = UUID.characteristicUUID(for: "__rpc__", in: type)
-        
-        // Discover services if needed
-        do {
-            // Discover the actor's service
-            let services = try await localCentral.discoverServices(
-                for: id,
-                serviceUUIDs: [CBUUID(nsuuid: serviceUUID)]
-            )
-            
-            guard !services.isEmpty else {
-                BleuLogger.actorSystem.warning("No services found for actor type \(type)")
-                return
-            }
-            
-            // Discover characteristics for the service
-            let characteristics = try await localCentral.discoverCharacteristics(
-                for: CBUUID(nsuuid: serviceUUID),
-                in: id,
-                characteristicUUIDs: [CBUUID(nsuuid: rpcCharUUID)]
-            )
-            
-            guard !characteristics.isEmpty else {
-                BleuLogger.actorSystem.warning("RPC characteristic not found for actor type \(type)")
-                return
-            }
-            
-            // Create a proxy for the remote peripheral with RPC characteristic
-            let proxy = PeripheralActorProxy(
-                id: id,
-                localCentral: localCentral,
-                rpcCharUUID: rpcCharUUID
-            )
-            
-            await proxyManager.set(id, proxy: proxy)
-            
-            // Setup event handler for this actor
-            let eventHandler: EventBridge.EventHandler = { @Sendable (event: BLEEvent) async throws in
-                // Handle events for this remote actor
-                BleuLogger.actorSystem.debug("Event for remote actor: \(id)")
-            }
-            await eventBridge.subscribe(id, handler: eventHandler)
-            
-            // Subscribe to RPC characteristic for responses
-            await eventBridge.subscribeToCharacteristic(rpcCharUUID, actorID: id)
-            
-            // Register RPC characteristic mapping
-            await eventBridge.registerRPCCharacteristic(rpcCharUUID, for: id)
-            
-            // Enable CoreBluetooth notifications for this characteristic
-            try await localCentral.setNotifyValue(true, for: CBUUID(nsuuid: rpcCharUUID), in: id)
-            
-        } catch {
-            BleuLogger.actorSystem.error("Error setting up remote proxy for \(id): \(error.localizedDescription)")
+
+        // Phase 1: Discovery (throws on failure, no cleanup needed)
+
+        // Discover the actor's service
+        let services = try await localCentral.discoverServices(
+            for: id,
+            serviceUUIDs: [CBUUID(nsuuid: serviceUUID)]
+        )
+
+        guard !services.isEmpty else {
+            throw BleuError.serviceNotFound(serviceUUID)
         }
+
+        // Discover characteristics for the service
+        let characteristics = try await localCentral.discoverCharacteristics(
+            for: CBUUID(nsuuid: serviceUUID),
+            in: id,
+            characteristicUUIDs: [CBUUID(nsuuid: rpcCharUUID)]
+        )
+
+        guard !characteristics.isEmpty else {
+            throw BleuError.characteristicNotFound(rpcCharUUID)
+        }
+
+        // Phase 2: Enable notifications BEFORE registering (critical - must succeed first)
+        do {
+            try await localCentral.setNotifyValue(true, for: CBUUID(nsuuid: rpcCharUUID), in: id)
+        } catch {
+            // If notification setup fails, throw immediately (nothing registered yet)
+            throw error
+        }
+
+        // Phase 3: Registration (only after all critical operations succeed)
+
+        // Create a proxy for the remote peripheral with RPC characteristic
+        let proxy = PeripheralActorProxy(
+            id: id,
+            localCentral: localCentral,
+            rpcCharUUID: rpcCharUUID
+        )
+
+        await proxyManager.set(id, proxy: proxy)
+
+        // Setup event handler for this actor
+        let eventHandler: EventBridge.EventHandler = { @Sendable (event: BLEEvent) async throws in
+            // Handle events for this remote actor
+            BleuLogger.actorSystem.debug("Event for remote actor: \(id)")
+        }
+        await eventBridge.subscribe(id, handler: eventHandler)
+
+        // Subscribe to RPC characteristic for responses
+        await eventBridge.subscribeToCharacteristic(rpcCharUUID, actorID: id)
+
+        // Register RPC characteristic mapping
+        await eventBridge.registerRPCCharacteristic(rpcCharUUID, for: id)
     }
 }
 

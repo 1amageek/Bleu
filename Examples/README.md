@@ -1,92 +1,145 @@
-# Bleu Examples
+# Bleu 2 Examples
 
-Bleu 2の使い方を学ぶためのサンプルコード集です。
+Sample code demonstrating how to use Bleu 2 framework with Swift Distributed Actors.
 
-## 📁 ディレクトリ構成
+## 📁 Directory Structure
 
-### BasicUsage/ - 基本的な使い方
-最小限のコードでBleuの基本機能を理解できます。
+### BasicUsage/ - Basic Usage Examples
+Minimal code examples to understand Bleu's core functionality using Distributed Actors.
 
-- **Server.swift** - BLEサーバーの最小実装
-- **Client.swift** - BLEクライアントの最小実装
-- **Communication.swift** - 型安全な通信パターンの例
+- **SensorServer.swift** - Minimal BLE peripheral implementation using PeripheralActor
+- **SensorClient.swift** - Minimal BLE central implementation for discovering and connecting to peripherals
 
-### SwiftUIApp/ - SwiftUIサンプルアプリ
-実践的なSwiftUIアプリケーションの実装例です。
+### SwiftUIApp/ - SwiftUI Sample Application
+Practical SwiftUI application implementation examples.
 
-- **BleuExampleApp.swift** - アプリのエントリーポイント
-- **ServerExample.swift** - サーバー機能のUI実装
-- **ClientExample.swift** - クライアント機能のUI実装
-- **BluetoothState.swift** - Bluetooth状態管理
+- **BleuExampleApp.swift** - Application entry point
+- **ServerExample.swift** - Peripheral (server) functionality with UI
+- **ClientExample.swift** - Central (client) functionality with UI
+- **BluetoothState.swift** - Bluetooth state management
+- **SharedViews.swift** - Reusable UI components
 
-### Common/ - 共通定義
-例全体で使用する共通の型定義です。
+### Common/ - Shared Definitions
+Common type definitions used across all examples.
 
-- **RemoteProcedures.swift** - リモートプロシージャ定義
-- **Notifications.swift** - 通知型定義
+- **PeripheralActors.swift** - Distributed actor definitions for BLE peripherals
+- **SensorPeripheral.swift** - Sensor-specific peripheral actor implementations
 
-## 🚀 実行方法
+## 🚀 Running Examples
 
-### Examplesディレクトリに移動
+### Navigate to Examples Directory
 
 ```bash
 cd Examples
 ```
 
-### 基本的な使い方の例を実行
+### Run Basic Usage Examples
 
 ```bash
-# サーバーを起動
-swift run BasicServer
+# Start the sensor server (peripheral)
+swift run SensorServer
 
-# 別のターミナルでクライアントを起動
-swift run BasicClient
+# In another terminal, start the sensor client (central)
+swift run SensorClient
 ```
 
-### SwiftUIアプリを実行
+### Run SwiftUI App
 
 ```bash
-# Xcodeで開く
+# Open in Xcode
 open Package.swift
 
-# BleuExampleAppターゲットを選択して実行
-# または
+# Select BleuExampleApp target and run
+# Or use command line:
 swift run BleuExampleApp
 ```
 
-## 📖 学習の流れ
+## 📖 Learning Path
 
-1. **BasicUsage/Server.swift** と **Client.swift** で基本的な通信を理解
-2. **Communication.swift** で型安全な通信パターンを学習
-3. **SwiftUIApp/** で実践的なアプリケーション実装を確認
-4. **Common/** の定義を参考に独自のプロトコルを実装
+1. **BasicUsage/SensorServer.swift** and **SensorClient.swift** - Understand basic peripheral-central communication
+2. **Common/PeripheralActors.swift** - Learn how to define distributed actors for BLE
+3. **SwiftUIApp/** - See practical application implementation with reactive UI
+4. **Common/** definitions - Reference for implementing your own peripheral actors
 
-## 💡 ポイント
+## 💡 Key Concepts
 
-### 型安全な通信
+### Distributed Actor Pattern
+
 ```swift
-// リクエスト/レスポンスを型で定義
-struct GetTemperatureRequest: RemoteProcedure {
-    struct Response: Sendable, Codable {
-        let temperature: Double
-        let humidity: Double
+// Define a peripheral as a distributed actor
+distributed actor TemperatureSensor: PeripheralActor {
+    typealias ActorSystem = BLEActorSystem
+
+    distributed func readTemperature() async throws -> Double {
+        return 25.5
     }
 }
 ```
 
-### 非同期処理
+### Type-Safe Communication
+
 ```swift
-// async/awaitを使った直感的な実装
-let response = try await client.sendRequest(request, to: deviceId)
+// Peripheral side - advertise the actor
+let system = BLEActorSystem.shared
+let sensor = TemperatureSensor(actorSystem: system)
+try await system.startAdvertising(sensor)
+
+// Central side - discover and call methods
+let sensors = try await system.discover(TemperatureSensor.self)
+let temperature = try await sensors[0].readTemperature()
 ```
 
-### SwiftUIとの統合
+### Async/Await Integration
+
 ```swift
-// ObservableObjectでリアクティブなUI更新
-@Published var isScanning = false
-@Published var devices: [Device] = []
+// All BLE operations use modern async/await
+let devices = try await system.discover(TemperatureSensor.self, timeout: 10.0)
+let value = try await devices[0].readTemperature()
 ```
 
-## 📚 詳細なドキュメント
+### SwiftUI Integration
 
-より詳しい情報は[メインのREADME](../README.md)を参照してください。
+```swift
+// Observable state for reactive UI updates
+@Published var isAdvertising = false
+@Published var discoveredDevices: [PeripheralActor] = []
+```
+
+## 📚 Documentation
+
+For more detailed information, see:
+- [Main README](../README.md) - Project overview and quick start
+- [Specification](../docs/SPECIFICATION.md) - Complete framework specification
+- [Repository Guidelines](../docs/internal/REPOSITORY_GUIDELINES.md) - Development workflow
+
+## 🎯 Example Features
+
+### BasicUsage
+- ✅ Minimal server/client implementation
+- ✅ Distributed actor pattern demonstration
+- ✅ Automatic service discovery
+- ✅ Type-safe remote method invocation
+
+### SwiftUIApp
+- ✅ Full SwiftUI integration
+- ✅ Peripheral and Central modes in one app
+- ✅ Real-time device discovery
+- ✅ Connection state management
+- ✅ Reactive UI updates with @Published
+
+## ⚙️ Requirements
+
+- iOS 18.0+ / macOS 15.0+ / watchOS 11.0+ / tvOS 18.0+
+- Swift 6.1+
+- Xcode 16.0+
+
+## 🧪 Testing
+
+Examples can be tested on:
+- Real iOS/macOS devices (recommended for full BLE functionality)
+- iOS Simulator (limited BLE support)
+- macOS (full CoreBluetooth support)
+
+---
+
+*These examples demonstrate Bleu 2's Distributed Actor architecture for transparent, type-safe BLE communication.*

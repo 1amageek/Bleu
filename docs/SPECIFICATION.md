@@ -140,24 +140,24 @@ distributed actor TemperatureSensorActor: PeripheralActor {
 ### Using a Peripheral
 
 ```swift
-// Discover peripherals
+// Discover peripherals (connects automatically)
 let sensors = try await system.discover(TemperatureSensorActor.self)
 
-// Use the first sensor
+// Use the first sensor (already connected and ready)
 if let sensor = sensors.first {
-    // Read temperature (triggers BLE read)
+    // Read temperature (immediate - already connected)
     let temp = try await sensor.readTemperature()
-    
+
     // Subscribe to updates (uses BLE notifications)
     for await update in try await sensor.subscribeToUpdates() {
         print("Temperature: \(update)")
     }
-    
-    // Save UUID for later
+
+    // Save UUID for later reconnection
     UserDefaults.standard.set(sensor.id.uuidString, forKey: "sensorID")
 }
 
-// Later: reconnect using saved UUID
+// Later: reconnect directly using saved UUID (skips scanning)
 if let uuidString = UserDefaults.standard.string(forKey: "sensorID"),
    let uuid = UUID(uuidString: uuidString) {
     let sensor = try await system.connect(to: uuid, as: TemperatureSensorActor.self)
@@ -175,13 +175,17 @@ if let uuidString = UserDefaults.standard.string(forKey: "sensorID"),
    - Create CBMutableService
    - Start advertising
 
-2. **Central Discovery**
+2. **Central Discovery & Connection**
    - Calculate expected service UUID
    - Scan for matching peripherals
+   - **Connect to each discovered peripheral**
+   - Discover services and characteristics
+   - Setup remote proxy
    - Create peripheral actor instances
 
-3. **Lazy Connection**
-   - Connection established on first method call
+3. **Connection Management**
+   - Connections established during discovery
+   - Actors returned in ready-to-use state
    - Automatic reconnection on failure
    - Connection pooling for efficiency
 

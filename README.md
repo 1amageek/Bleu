@@ -253,6 +253,18 @@ func testActorCommunication() async throws {
 - [ ] Performance optimizations
 - [ ] Additional platform support
 
+## 📚 Documentation
+
+Comprehensive documentation is available in the `docs/` directory:
+
+- **[Specification](docs/SPECIFICATION.md)** - Complete framework specification and design
+- **[Design Documents](docs/design/)** - Architecture and implementation design documents
+  - [Discovery Connection Fix](docs/design/DISCOVERY_CONNECTION_FIX.md) - Bug fix design for eager connection pattern
+
+For contributors and maintainers:
+- **[Repository Guidelines](docs/internal/REPOSITORY_GUIDELINES.md)** - Project structure, coding standards, and development workflow
+- **[Claude Code Guide](docs/internal/CLAUDE.md)** - AI assistant integration guide
+
 ## 🤝 Contributing
 
 We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
@@ -269,6 +281,6 @@ Special thanks to the Swift community and all contributors who have helped shape
 
 <div align="center">
   Made with ❤️ by <a href="https://x.com/1amageek">@1amageek</a>
-  
-  [Documentation](https://github.com/1amageek/Bleu/wiki) • [Issues](https://github.com/1amageek/Bleu/issues) • [Discussions](https://github.com/1amageek/Bleu/discussions)
+
+  [Documentation](docs/) • [Issues](https://github.com/1amageek/Bleu/issues) • [Discussions](https://github.com/1amageek/Bleu/discussions)
 </div>
