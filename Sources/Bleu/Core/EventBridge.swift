@@ -201,32 +201,84 @@ public actor EventBridge {
             let response = await handler(envelope)
 
             // Send response back via characteristic notification
-            if let responseData = try? JSONEncoder().encode(response),
-               let peripheralManager = peripheralManager {
+            do {
+                let responseData = try JSONEncoder().encode(response)
+                guard let peripheralManager = peripheralManager else {
+                    BleuLogger.rpc.error("Peripheral manager not available for response")
+                    return
+                }
 
                 // Use BLETransport to fragment response if needed
                 let transport = BLETransport.shared
                 let packets = await transport.fragment(responseData)
 
-                // Send each packet
-                for packet in packets {
-                    // Use BLETransport's binary packing for consistency
+                // Send each packet with retry logic
+                for (index, packet) in packets.enumerated() {
                     let packetData = await transport.packPacket(packet)
-                    let success = try? await peripheralManager.updateValue(
-                        packetData,
-                        for: characteristicUUID,
-                        to: nil  // Broadcast to all subscribed centrals
-                    )
 
-                    if success != true {
-                        BleuLogger.rpc.warning("Could not send RPC response packet, central may not be ready")
-                        break
+                    // Try up to 3 times: initial attempt + 2 retries
+                    // Delays: 50ms, 100ms (exponential backoff)
+                    var attempt = 0
+                    var success = false
+                    let maxAttempts = 3
+
+                    while attempt < maxAttempts && !success {
+                        do {
+                            success = try await peripheralManager.updateValue(
+                                packetData,
+                                for: characteristicUUID,
+                                to: nil  // Broadcast to all subscribed centrals
+                            )
+
+                            if !success && attempt < maxAttempts - 1 {
+                                // Central not ready, wait before retry
+                                // Exponential backoff: 50ms, 100ms
+                                let delayMs = 50 * (1 << attempt)  // 50ms * (1, 2) = 50ms, 100ms
+                                BleuLogger.rpc.debug("Packet \(index)/\(packets.count) failed, retrying after \(delayMs)ms (attempt \(attempt + 1)/\(maxAttempts))")
+                                try await Task.sleep(nanoseconds: UInt64(delayMs) * 1_000_000)
+                            }
+                        } catch {
+                            BleuLogger.rpc.warning("Error sending packet \(index): \(error)")
+                            if attempt < maxAttempts - 1 {
+                                // Wait before retry
+                                let delayMs = 50 * (1 << attempt)
+                                try await Task.sleep(nanoseconds: UInt64(delayMs) * 1_000_000)
+                            }
+                        }
+
+                        attempt += 1
+                    }
+
+                    // If all attempts failed, send error response to Central
+                    if !success {
+                        BleuLogger.rpc.error("Failed to send packet \(index)/\(packets.count) after \(maxAttempts) attempts, sending error response")
+                        await sendErrorResponse(
+                            callID: response.callID,
+                            characteristicUUID: characteristicUUID,
+                            peripheralManager: peripheralManager,
+                            error: "Packet transmission failed after retries"
+                        )
+                        return
                     }
 
                     // Small delay between packets to prevent overwhelming the central
-                    if packets.count > 1 {
-                        try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
+                    if index < packets.count - 1 {
+                        try await Task.sleep(nanoseconds: 10_000_000) // 10ms
                     }
+                }
+
+                BleuLogger.rpc.debug("Successfully sent \(packets.count) packet(s) for RPC response")
+
+            } catch {
+                BleuLogger.rpc.error("Failed to encode or send RPC response: \(error)")
+                // Send error response to Central
+                if let peripheralManager = peripheralManager {
+                    await sendErrorResponse(
+                        callID: response.callID,
+                        characteristicUUID: characteristicUUID,
+                        peripheralManager: peripheralManager,
+                        error: "Response encoding failed: \(error.localizedDescription)"
+                    )
                 }
             }
         } else {
@@ -294,6 +346,42 @@ public actor EventBridge {
         }
     }
     
+    /// Send error response to Central when packet transmission fails
+    private func sendErrorResponse(
+        callID: String,
+        characteristicUUID: UUID,
+        peripheralManager: BLEPeripheralManagerProtocol,
+        error: String
+    ) async {
+        // Create error response envelope
+        let errorResponse = ResponseEnvelope(
+            callID: callID,
+            result: .failure(.transportFailed(error))
+        )
+
+        do {
+            let errorData = try JSONEncoder().encode(errorResponse)
+
+            // Try to send as single packet (error responses are usually small)
+            let transport = BLETransport.shared
+            let packets = await transport.fragment(errorData)
+
+            // Send only the first packet (if error response is small)
+            // Don't retry error responses to avoid infinite loops
+            if let firstPacket = packets.first {
+                let packetData = await transport.packPacket(firstPacket)
+                _ = try? await peripheralManager.updateValue(
+                    packetData,
+                    for: characteristicUUID,
+                    to: nil
+                )
+                BleuLogger.rpc.debug("Sent error response for call \(callID)")
+            }
+        } catch {
+            BleuLogger.rpc.error("Failed to send error response: \(error)")
+        }
+    }
+
     /// Handle an RPC response
     private func handleRPCResponse(_ envelope: ResponseEnvelope) async {
         // Convert callID (String) to UUID for lookup
