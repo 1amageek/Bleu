@@ -6,6 +6,18 @@ import CoreBluetooth
 ///
 /// This bridge acts as a shared communication channel that routes characteristic
 /// writes from centrals to peripherals and notifications from peripherals to centrals.
+///
+/// Usage:
+/// ```swift
+/// // Peripheral system
+/// let peripheralSystem = BLEActorSystem(...)
+/// let bridge = MockBLEBridge.shared
+///
+/// // Central system
+/// let centralSystem = BLEActorSystem(...)
+///
+/// // The bridge automatically routes communication between them
+/// ```
 public actor MockBLEBridge {
 
     /// Shared instance

@@ -1,5 +1,6 @@
 import Foundation
 import CoreBluetooth
+@testable import Bleu
 
 /// Mock implementation of BLE peripheral manager for testing
 /// Simulates peripheral behavior without requiring BLE hardware or TCC permissions
@@ -24,6 +25,10 @@ public actor MockPeripheralManager: BLEPeripheralManagerProtocol {
         /// Initial Bluetooth state
         public var initialState: CBManagerState = .poweredOn
 
+        /// Skip automatic transition to powered on during initialization
+        /// Set to true if you want to test state changes manually
+        public var skipWaitForPoweredOn: Bool = false
+
         /// Delay before advertising starts (simulates async)
         public var advertisingDelay: TimeInterval = 0
 
@@ -35,6 +40,11 @@ public actor MockPeripheralManager: BLEPeripheralManagerProtocol {
 
         /// Delay before responding to writes
         public var writeResponseDelay: TimeInterval = 0
+
+        /// Enable cross-system communication via MockBLEBridge
+        /// When true, this manager will use MockBLEBridge.shared to communicate
+        /// with other systems' mock managers
+        public var useBridge: Bool = false
 
         public init() {}
     }
@@ -66,6 +76,11 @@ public actor MockPeripheralManager: BLEPeripheralManagerProtocol {
     }
 
     public func waitForPoweredOn() async -> CBManagerState {
+        // If skipWaitForPoweredOn is true, return current state without transitioning
+        if config.skipWaitForPoweredOn {
+            return _state
+        }
+
         // Already powered on - return immediately
         if _state == .poweredOn {
             return .poweredOn
@@ -90,55 +105,39 @@ public actor MockPeripheralManager: BLEPeripheralManagerProtocol {
             characteristicValues[char.uuid] = Data()
         }
 
-        // Register characteristics with bridge if peripheral ID is set
-        if let peripheralID = peripheralID {
+        // Register with bridge if enabled
+        if config.useBridge, let peripheralID = peripheralID {
             for char in service.characteristics {
                 await MockBLEBridge.shared.registerPeripheral(
                     peripheralID,
                     serviceUUID: service.uuid,
                     characteristicUUID: char.uuid,
-                    writeHandler: { [weak self] charUUID, value in
+                    writeHandler: { [weak self] charUUID, data in
                         guard let self = self else { return }
-                        await self.handleIncomingWrite(charUUID: charUUID, value: value)
+                        // Store the value
+                        await self.storeCharacteristicValue(charUUID, data: data)
+                        // Send event to local system
+                        await self.eventChannel.send(.writeRequestReceived(
+                            UUID(),  // central ID - unknown in bridge mode
+                            service.uuid,
+                            charUUID,
+                            data
+                        ))
                     }
                 )
             }
         }
+    }
+
+    /// Store characteristic value (internal helper)
+    private func storeCharacteristicValue(_ uuid: UUID, data: Data) {
+        characteristicValues[uuid] = data
     }
 
     /// Set the peripheral ID for bridge communication
     /// This should be called when the peripheral is associated with a distributed actor
     public func setPeripheralID(_ id: UUID) async {
         self.peripheralID = id
-
-        // Register all existing characteristics with the bridge
-        for (serviceUUID, service) in services {
-            for char in service.characteristics {
-                await MockBLEBridge.shared.registerPeripheral(
-                    id,
-                    serviceUUID: serviceUUID,
-                    characteristicUUID: char.uuid,
-                    writeHandler: { [weak self] charUUID, value in
-                        guard let self = self else { return }
-                        await self.handleIncomingWrite(charUUID: charUUID, value: value)
-                    }
-                )
-            }
-        }
-    }
-
-    /// Handle incoming write from bridge
-    private func handleIncomingWrite(charUUID: UUID, value: Data) async {
-        // Store the value
-        characteristicValues[charUUID] = value
-
-        // Send event to listeners
-        await eventChannel.send(.writeRequestReceived(
-            UUID(), // centralID - we don't have it in this context
-            UUID(), // serviceUUID - we don't have it in this context
-            charUUID,
-            value
-        ))
     }
 
     public func startAdvertising(_ data: AdvertisementData) async throws {
@@ -181,27 +180,27 @@ public actor MockPeripheralManager: BLEPeripheralManagerProtocol {
 
         characteristicValues[characteristicUUID] = data
 
-        // Send notification event for subscribed centrals
-        let centralsToNotify = centrals ?? Array(
-            subscribedCentrals[characteristicUUID] ?? []
-        )
-
-        for centralID in centralsToNotify {
-            await eventChannel.send(.characteristicValueUpdated(
-                centralID,
-                UUID(),  // service UUID
-                characteristicUUID,
-                data
-            ))
-        }
-
-        // Send notification through bridge for cross-system communication
-        if let peripheralID = peripheralID {
+        if config.useBridge, let peripheralID = peripheralID {
+            // Use bridge for cross-system communication
             await MockBLEBridge.shared.peripheralNotify(
                 from: peripheralID,
                 characteristicUUID: characteristicUUID,
                 value: data
             )
+        } else {
+            // Local event channel for same-system communication
+            let centralsToNotify = centrals ?? Array(
+                subscribedCentrals[characteristicUUID] ?? []
+            )
+
+            for centralID in centralsToNotify {
+                await eventChannel.send(.characteristicValueUpdated(
+                    centralID,
+                    UUID(),  // service UUID
+                    characteristicUUID,
+                    data
+                ))
+            }
         }
 
         return true  // Mock always succeeds

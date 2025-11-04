@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
@@ -15,11 +15,7 @@ let package = Package(
         .library(
             name: "Bleu",
             targets: ["Bleu"]
-        ),
-        .executable(
-            name: "BleuDemo",
-            targets: ["BleuDemo"]
-        ),
+        )
     ],
     dependencies: [
         .package(url: "https://github.com/1amageek/swift-actor-runtime", branch: "main")
@@ -31,11 +27,6 @@ let package = Package(
                 .product(name: "ActorRuntime", package: "swift-actor-runtime")
             ],
             path: "Sources/Bleu"
-        ),
-        .executableTarget(
-            name: "BleuDemo",
-            dependencies: ["Bleu"],
-            path: "Sources/BleuDemo"
         ),
         .testTarget(
             name: "BleuTests",

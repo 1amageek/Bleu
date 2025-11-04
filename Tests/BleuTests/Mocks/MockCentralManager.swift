@@ -1,5 +1,6 @@
 import Foundation
 import CoreBluetooth
+@testable import Bleu
 
 /// Mock implementation of BLE central manager for testing
 /// Simulates central behavior without requiring BLE hardware or TCC permissions
@@ -23,11 +24,17 @@ public actor MockCentralManager: BLECentralManagerProtocol {
 
     public struct Configuration: Sendable {
         public var initialState: CBManagerState = .poweredOn
+        public var skipWaitForPoweredOn: Bool = false
         public var scanDelay: TimeInterval = 0.1
         public var connectionDelay: TimeInterval = 0.1
         public var discoveryDelay: TimeInterval = 0.05
         public var shouldFailConnection: Bool = false
         public var connectionTimeout: Bool = false
+
+        /// Enable cross-system communication via MockBLEBridge
+        /// When true, this manager will use MockBLEBridge.shared to communicate
+        /// with other systems' mock managers
+        public var useBridge: Bool = false
 
         public init() {}
     }
@@ -59,6 +66,11 @@ public actor MockCentralManager: BLECentralManagerProtocol {
     }
 
     public func waitForPoweredOn() async -> CBManagerState {
+        // If skipWaitForPoweredOn is true, return current state without transitioning
+        if config.skipWaitForPoweredOn {
+            return _state
+        }
+
         // Already powered on - return immediately
         if _state == .poweredOn {
             return .poweredOn
@@ -209,19 +221,21 @@ public actor MockCentralManager: BLECentralManagerProtocol {
             throw BleuError.peripheralNotFound(peripheralID)
         }
 
-        // Store locally for backward compatibility
+        // Store locally
         if characteristicValues[peripheralID] == nil {
             characteristicValues[peripheralID] = [:]
         }
         characteristicValues[peripheralID]?[characteristicUUID] = data
 
-        // Route through bridge for cross-system communication
-        try await MockBLEBridge.shared.centralWrite(
-            from: centralID,
-            to: peripheralID,
-            characteristicUUID: characteristicUUID,
-            value: data
-        )
+        // Forward to bridge if enabled
+        if config.useBridge {
+            try await MockBLEBridge.shared.centralWrite(
+                from: UUID(),  // central ID - could be tracked if needed
+                to: peripheralID,
+                characteristicUUID: characteristicUUID,
+                value: data
+            )
+        }
     }
 
     public func setNotifyValue(
@@ -240,18 +254,25 @@ public actor MockCentralManager: BLECentralManagerProtocol {
             notifyingCharacteristics[peripheralID]?.insert(characteristicUUID)
 
             // Register with bridge to receive notifications
-            await MockBLEBridge.shared.registerCentral(
-                centralID,
-                for: peripheralID,
-                characteristicUUID: characteristicUUID,
-                notificationHandler: { [weak self] charUUID, value in
-                    guard let self = self else { return }
-                    await self.handleNotification(peripheralID: peripheralID, charUUID: charUUID, value: value)
-                }
-            )
+            if config.useBridge {
+                await MockBLEBridge.shared.registerCentral(
+                    UUID(),  // central ID
+                    for: peripheralID,
+                    characteristicUUID: characteristicUUID,
+                    notificationHandler: { [weak self] charUUID, data in
+                        guard let self = self else { return }
+                        // Send notification event to local system
+                        await self.eventChannel.send(.characteristicValueUpdated(
+                            peripheralID,
+                            UUID(),  // service UUID
+                            charUUID,
+                            data
+                        ))
+                    }
+                )
+            }
         } else {
             notifyingCharacteristics[peripheralID]?.remove(characteristicUUID)
-            await MockBLEBridge.shared.unregisterCentral(centralID, from: peripheralID)
         }
 
         await eventChannel.send(.notificationStateChanged(
@@ -259,23 +280,6 @@ public actor MockCentralManager: BLECentralManagerProtocol {
             UUID(),
             characteristicUUID,
             enabled
-        ))
-    }
-
-    /// Handle incoming notification from bridge
-    private func handleNotification(peripheralID: UUID, charUUID: UUID, value: Data) async {
-        // Store the value
-        if characteristicValues[peripheralID] == nil {
-            characteristicValues[peripheralID] = [:]
-        }
-        characteristicValues[peripheralID]?[charUUID] = value
-
-        // Send event
-        await eventChannel.send(.characteristicValueUpdated(
-            peripheralID,
-            UUID(), // serviceUUID - we don't have it in this context
-            charUUID,
-            value
         ))
     }
 

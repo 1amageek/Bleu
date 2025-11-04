@@ -75,6 +75,11 @@ public actor InstanceRegistry {
         peripheralIndex[peripheralID]?.insert(actor.id)
     }
     
+    /// Get an actor instance by ID (type-erased)
+    public func find(_ id: UUID) -> (any DistributedActor)? {
+        return instances[id]?.instance
+    }
+
     /// Get an actor instance by ID
     public func get<T: DistributedActor>(_ id: UUID, as type: T.Type) -> T? where T.ID == UUID {
         guard let registration = instances[id] else { return nil }

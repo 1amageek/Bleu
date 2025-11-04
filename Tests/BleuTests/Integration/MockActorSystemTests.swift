@@ -31,13 +31,13 @@ struct MockActorSystemTests {
 
     @Test("Mock peripheral manager starts advertising")
     func testMockPeripheralAdvertising() async throws {
-        let system = await BLEActorSystem.mock()
-
-        // Access mock peripheral manager
-        guard let mockPeripheral = await system.mockPeripheralManager() else {
-            Issue.record("Expected mock peripheral manager")
-            return
-        }
+        // Create mocks explicitly
+        let mockPeripheral = MockPeripheralManager()
+        let mockCentral = MockCentralManager()
+        let system = BLEActorSystem(
+            peripheralManager: mockPeripheral,
+            centralManager: mockCentral
+        )
 
         // Initially not advertising
         #expect(await mockPeripheral.isAdvertising == false)
@@ -75,18 +75,19 @@ struct MockActorSystemTests {
 
     @Test("Mock central manager scans and connects")
     func testMockCentralScanAndConnect() async throws {
-        let peripheralSystem = await BLEActorSystem.mock()
-        let centralSystem = await BLEActorSystem.mock()
+        let mockPeripheral1 = MockPeripheralManager()
+        let mockCentral1 = MockCentralManager()
+        let peripheralSystem = BLEActorSystem(
+            peripheralManager: mockPeripheral1,
+            centralManager: mockCentral1
+        )
 
-        guard let mockPeripheral = await peripheralSystem.mockPeripheralManager() else {
-            Issue.record("Expected mock peripheral manager")
-            return
-        }
-
-        guard let mockCentral = await centralSystem.mockCentralManager() else {
-            Issue.record("Expected mock central manager")
-            return
-        }
+        let mockPeripheral2 = MockPeripheralManager()
+        let mockCentral2 = MockCentralManager()
+        let centralSystem = BLEActorSystem(
+            peripheralManager: mockPeripheral2,
+            centralManager: mockCentral2
+        )
 
         // Setup peripheral
         let serviceUUID = UUID()
@@ -96,13 +97,13 @@ struct MockActorSystemTests {
             characteristics: []
         )
 
-        try await mockPeripheral.add(service)
+        try await mockPeripheral1.add(service)
 
         let advertisementData = AdvertisementData(
             localName: "TestDevice",
             serviceUUIDs: [serviceUUID]
         )
-        try await mockPeripheral.startAdvertising(advertisementData)
+        try await mockPeripheral1.startAdvertising(advertisementData)
 
         // Register peripheral in central
         let peripheralID = UUID()
@@ -113,11 +114,11 @@ struct MockActorSystemTests {
             advertisementData: advertisementData
         )
 
-        await mockCentral.registerPeripheral(discoveredPeripheral, services: [service])
+        await mockCentral2.registerPeripheral(discoveredPeripheral, services: [service])
 
         // Scan for peripherals
         var foundPeripherals: [DiscoveredPeripheral] = []
-        for await peripheral in await mockCentral.scanForPeripherals(
+        for await peripheral in await mockCentral2.scanForPeripherals(
             withServices: [serviceUUID],
             timeout: 1.0
         ) {
@@ -128,22 +129,22 @@ struct MockActorSystemTests {
         #expect(foundPeripherals.first?.name == "TestDevice")
 
         // Connect to peripheral
-        try await mockCentral.connect(to: peripheralID, timeout: 1.0)
-        #expect(await mockCentral.isConnected(peripheralID) == true)
+        try await mockCentral2.connect(to: peripheralID, timeout: 1.0)
+        #expect(await mockCentral2.isConnected(peripheralID) == true)
 
         // Disconnect
-        try await mockCentral.disconnect(from: peripheralID)
-        #expect(await mockCentral.isConnected(peripheralID) == false)
+        try await mockCentral2.disconnect(from: peripheralID)
+        #expect(await mockCentral2.isConnected(peripheralID) == false)
     }
 
     @Test("Mock peripheral handles characteristic updates")
     func testMockCharacteristicUpdates() async throws {
-        let system = await BLEActorSystem.mock()
-
-        guard let mockPeripheral = await system.mockPeripheralManager() else {
-            Issue.record("Expected mock peripheral manager")
-            return
-        }
+        let mockPeripheral = MockPeripheralManager()
+        let mockCentral = MockCentralManager()
+        let system = BLEActorSystem(
+            peripheralManager: mockPeripheral,
+            centralManager: mockCentral
+        )
 
         // Create service with characteristic
         let charUUID = UUID()
@@ -170,7 +171,7 @@ struct MockActorSystemTests {
         let success = try await mockPeripheral.updateValue(
             testData,
             for: charUUID,
-            to: nil
+            to: [centralID]
         )
 
         #expect(success == true)
@@ -185,12 +186,12 @@ struct MockActorSystemTests {
 
     @Test("Mock central discovers services and characteristics")
     func testMockServiceDiscovery() async throws {
-        let system = await BLEActorSystem.mock()
-
-        guard let mockCentral = await system.mockCentralManager() else {
-            Issue.record("Expected mock central manager")
-            return
-        }
+        let mockPeripheral = MockPeripheralManager()
+        let mockCentral = MockCentralManager()
+        let system = BLEActorSystem(
+            peripheralManager: mockPeripheral,
+            centralManager: mockCentral
+        )
 
         // Setup peripheral with services
         let peripheralID = UUID()
@@ -246,12 +247,12 @@ struct MockActorSystemTests {
 
     @Test("Mock handles read and write operations")
     func testMockReadWrite() async throws {
-        let system = await BLEActorSystem.mock()
-
-        guard let mockCentral = await system.mockCentralManager() else {
-            Issue.record("Expected mock central manager")
-            return
-        }
+        let mockPeripheral = MockPeripheralManager()
+        let mockCentral = MockCentralManager()
+        let system = BLEActorSystem(
+            peripheralManager: mockPeripheral,
+            centralManager: mockCentral
+        )
 
         // Setup peripheral
         let peripheralID = UUID()
@@ -303,12 +304,12 @@ struct MockActorSystemTests {
         var config = MockCentralManager.Configuration()
         config.shouldFailConnection = true
 
-        let system = await BLEActorSystem.mock(centralConfig: config)
-
-        guard let mockCentral = await system.mockCentralManager() else {
-            Issue.record("Expected mock central manager")
-            return
-        }
+        let mockPeripheral = MockPeripheralManager()
+        let mockCentral = MockCentralManager(configuration: config)
+        let system = BLEActorSystem(
+            peripheralManager: mockPeripheral,
+            centralManager: mockCentral
+        )
 
         // Register a peripheral
         let peripheralID = UUID()
@@ -341,13 +342,14 @@ struct MockActorSystemTests {
     func testMockStateChanges() async throws {
         var config = MockPeripheralManager.Configuration()
         config.initialState = .poweredOff
+        config.skipWaitForPoweredOn = true  // Don't auto-transition to powered on
 
-        let system = await BLEActorSystem.mock(peripheralConfig: config)
-
-        guard let mockPeripheral = await system.mockPeripheralManager() else {
-            Issue.record("Expected mock peripheral manager")
-            return
-        }
+        let mockPeripheral = MockPeripheralManager(configuration: config)
+        let mockCentral = MockCentralManager()
+        let system = BLEActorSystem(
+            peripheralManager: mockPeripheral,
+            centralManager: mockCentral
+        )
 
         // Initial state should be powered off
         #expect(await mockPeripheral.state == .poweredOff)

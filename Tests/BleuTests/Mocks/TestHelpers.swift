@@ -164,6 +164,21 @@ enum TestHelpers {
 
     // Note: waitFor and withTimeout helpers removed due to Swift 6 concurrency restrictions
     // Tests can use simple Task.sleep with timeouts directly
+
+    /// Wait for BLEActorSystem to be ready
+    /// - Parameter system: The system to wait for
+    /// - Parameter timeout: Maximum time to wait in seconds (default: 1.0)
+    /// - Throws: TestTimeoutError if system doesn't become ready in time
+    static func waitForReady(_ system: BLEActorSystem, timeout: TimeInterval = 1.0) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if await system.ready {
+                return
+            }
+            try await Task.sleep(nanoseconds: 1_000_000) // 1ms
+        }
+        throw TestTimeoutError()
+    }
 }
 
 // MARK: - Test Errors

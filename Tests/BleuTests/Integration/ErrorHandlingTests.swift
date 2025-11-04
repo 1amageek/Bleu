@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import Distributed
+import CoreBluetooth
 @testable import Bleu
 
 /// Integration tests focused on error handling scenarios
@@ -11,12 +12,13 @@ struct ErrorHandlingTests {
 
     @Test("Service not found error")
     func testServiceNotFound() async throws {
-        let centralSystem = await BLEActorSystem.mock()
-
-        guard let mockCentral = await centralSystem.mockCentralManager() else {
-            Issue.record("Expected mock central manager")
-            return
-        }
+        // Create mocks explicitly
+        let mockPeripheral = MockPeripheralManager()
+        let mockCentral = MockCentralManager()
+        let centralSystem = BLEActorSystem(
+            peripheralManager: mockPeripheral,
+            centralManager: mockCentral
+        )
 
         // Register peripheral without the expected service
         let peripheralID = UUID()
@@ -50,12 +52,12 @@ struct ErrorHandlingTests {
 
     @Test("Characteristic not found error")
     func testCharacteristicNotFound() async throws {
-        let centralSystem = await BLEActorSystem.mock()
-
-        guard let mockCentral = await centralSystem.mockCentralManager() else {
-            Issue.record("Expected mock central manager")
-            return
-        }
+        let mockPeripheral = MockPeripheralManager()
+        let mockCentral = MockCentralManager()
+        let centralSystem = BLEActorSystem(
+            peripheralManager: mockPeripheral,
+            centralManager: mockCentral
+        )
 
         let peripheralID = UUID()
         let serviceUUID = UUID()
@@ -86,12 +88,12 @@ struct ErrorHandlingTests {
 
     @Test("Peripheral not found error")
     func testPeripheralNotFound() async throws {
-        let centralSystem = await BLEActorSystem.mock()
-
-        guard let mockCentral = await centralSystem.mockCentralManager() else {
-            Issue.record("Expected mock central manager")
-            return
-        }
+        let mockPeripheral = MockPeripheralManager()
+        let mockCentral = MockCentralManager()
+        let centralSystem = BLEActorSystem(
+            peripheralManager: mockPeripheral,
+            centralManager: mockCentral
+        )
 
         // Try to connect to non-existent peripheral
         let nonExistentID = UUID()
@@ -113,12 +115,12 @@ struct ErrorHandlingTests {
         var config = TestHelpers.fastCentralConfig()
         config.shouldFailConnection = true
 
-        let centralSystem = await BLEActorSystem.mock(centralConfig: config)
-
-        guard let mockCentral = await centralSystem.mockCentralManager() else {
-            Issue.record("Expected mock central manager")
-            return
-        }
+        let mockPeripheral = MockPeripheralManager()
+        let mockCentral = MockCentralManager(configuration: config)
+        let centralSystem = BLEActorSystem(
+            peripheralManager: mockPeripheral,
+            centralManager: mockCentral
+        )
 
         let peripheralID = UUID()
         let discovered = TestHelpers.createDiscoveredPeripheral(id: peripheralID)
@@ -139,12 +141,12 @@ struct ErrorHandlingTests {
 
     @Test("Disconnection during operation")
     func testDisconnectionDuringOperation() async throws {
-        let centralSystem = await BLEActorSystem.mock()
-
-        guard let mockCentral = await centralSystem.mockCentralManager() else {
-            Issue.record("Expected mock central manager")
-            return
-        }
+        let mockPeripheral = MockPeripheralManager()
+        let mockCentral = MockCentralManager()
+        let centralSystem = BLEActorSystem(
+            peripheralManager: mockPeripheral,
+            centralManager: mockCentral
+        )
 
         let peripheralID = UUID()
         let discovered = TestHelpers.createDiscoveredPeripheral(id: peripheralID)
@@ -167,26 +169,56 @@ struct ErrorHandlingTests {
 
     @Test("Bluetooth powered off error")
     func testBluetoothPoweredOff() async throws {
-        var config = MockPeripheralManager.Configuration()
-        config.initialState = .poweredOff
+        // Configure both managers to start powered off
+        var peripheralConfig = MockPeripheralManager.Configuration()
+        peripheralConfig.initialState = .poweredOff
+        peripheralConfig.skipWaitForPoweredOn = true
 
-        let system = await BLEActorSystem.mock(peripheralConfig: config)
+        var centralConfig = MockCentralManager.Configuration()
+        centralConfig.initialState = .poweredOff
+        centralConfig.skipWaitForPoweredOn = true
 
-        guard let mockPeripheral = await system.mockPeripheralManager() else {
-            Issue.record("Expected mock peripheral manager")
-            return
+        let mockPeripheral = MockPeripheralManager(configuration: peripheralConfig)
+        let mockCentral = MockCentralManager(configuration: centralConfig)
+        let system = BLEActorSystem(
+            peripheralManager: mockPeripheral,
+            centralManager: mockCentral
+        )
+
+        // Give system time to initialize and process state
+        try await Task.sleep(nanoseconds: 50_000_000) // 50ms
+
+        // Verify initial states are powered off
+        #expect(await mockPeripheral.state == .poweredOff)
+        #expect(await mockCentral.state == .poweredOff)
+
+        // System should not be ready when Bluetooth is powered off
+        #expect(await system.ready == false)
+
+        // Try to start advertising while powered off - should fail
+        let sensor = SensorActor(actorSystem: system)
+        do {
+            try await system.startAdvertising(sensor)
+            Issue.record("Expected advertising to fail when Bluetooth is powered off")
+        } catch {
+            // Expected - advertising should fail when powered off
         }
 
-        // Verify initial state
-        #expect(await mockPeripheral.state == .poweredOff)
+        // Now power on both managers
+        await mockPeripheral.simulateStateChange(.poweredOn)
+        await mockCentral.simulateStateChange(.poweredOn)
 
-        // Try to add service while powered off - should wait for power on
-        let service = TestHelpers.createSimpleService()
+        // Give system time to process state changes
+        try await Task.sleep(nanoseconds: 50_000_000) // 50ms
 
-        // The mock's waitForPoweredOn will simulate powering on
-        // This tests the state handling logic
-        let state = await mockPeripheral.waitForPoweredOn()
-        #expect(state == .poweredOn)
+        #expect(await mockPeripheral.state == .poweredOn)
+        #expect(await mockCentral.state == .poweredOn)
+
+        // System should now be ready
+        #expect(await system.ready == true)
+
+        // Advertising should now succeed
+        try await system.startAdvertising(sensor)
     }
 
     @Test("Advertising when not ready")
@@ -194,27 +226,27 @@ struct ErrorHandlingTests {
         var config = MockPeripheralManager.Configuration()
         config.shouldFailAdvertising = true
 
-        let system = await BLEActorSystem.mock(peripheralConfig: config)
+        let mockPeripheral = MockPeripheralManager(configuration: config)
+        let mockCentral = MockCentralManager()
+        let system = BLEActorSystem(
+            peripheralManager: mockPeripheral,
+            centralManager: mockCentral
+        )
 
-        guard let mockPeripheral = await system.mockPeripheralManager() else {
-            Issue.record("Expected mock peripheral manager")
-            return
-        }
-
-        let service = TestHelpers.createSimpleService()
-        try await mockPeripheral.add(service)
-
-        let advertisementData = TestHelpers.createAdvertisementData()
+        // Create actor and try to advertise when system is configured to fail
+        let sensor = SensorActor(actorSystem: system)
 
         do {
-            try await mockPeripheral.startAdvertising(advertisementData)
+            try await system.startAdvertising(sensor)
             Issue.record("Expected advertising to fail")
         } catch let error as BleuError {
             if case .operationNotSupported = error {
                 // Success - expected error
             } else {
-                Issue.record("Expected BleuError.operationNotSupported")
+                Issue.record("Expected BleuError.operationNotSupported, got \(error)")
             }
+        } catch {
+            Issue.record("Expected BleuError.operationNotSupported, got \(error)")
         }
     }
 
@@ -222,18 +254,43 @@ struct ErrorHandlingTests {
 
     @Test("Distributed actor method throws error")
     func testActorMethodThrows() async throws {
-        let peripheralSystem = await BLEActorSystem.mock()
-        let centralSystem = await BLEActorSystem.mock()
+        // Reset bridge before test
+        await MockBLEBridge.shared.reset()
+
+        // Configure managers to use bridge for cross-system communication
+        var peripheralConfig = MockPeripheralManager.Configuration()
+        peripheralConfig.useBridge = true
+
+        var centralConfig = MockCentralManager.Configuration()
+        centralConfig.useBridge = true
+
+        // Peripheral system
+        let mockPeripheral1 = MockPeripheralManager(configuration: peripheralConfig)
+        let mockCentral1 = MockCentralManager(configuration: centralConfig)
+        let peripheralSystem = BLEActorSystem(
+            peripheralManager: mockPeripheral1,
+            centralManager: mockCentral1
+        )
+
+        // Central system
+        let mockPeripheral2 = MockPeripheralManager(configuration: peripheralConfig)
+        let mockCentral2 = MockCentralManager(configuration: centralConfig)
+        let centralSystem = BLEActorSystem(
+            peripheralManager: mockPeripheral2,
+            centralManager: mockCentral2
+        )
+
+        // Wait for systems to be ready
+        try await TestHelpers.waitForReady(peripheralSystem)
+        try await TestHelpers.waitForReady(centralSystem)
 
         // Create error-throwing actor
         let errorActor = ErrorThrowingActor(actorSystem: peripheralSystem)
-        try await peripheralSystem.startAdvertising(errorActor)
 
-        // Setup mock central
-        guard let mockCentral = await centralSystem.mockCentralManager() else {
-            Issue.record("Expected mock central manager")
-            return
-        }
+        // Set peripheral ID so bridge can route messages
+        await mockPeripheral1.setPeripheralID(errorActor.id)
+
+        try await peripheralSystem.startAdvertising(errorActor)
 
         let serviceUUID = UUID.serviceUUID(for: ErrorThrowingActor.self)
         let serviceMetadata = ServiceMapper.createServiceMetadata(from: ErrorThrowingActor.self)
@@ -242,7 +299,7 @@ struct ErrorHandlingTests {
             id: errorActor.id,
             serviceUUIDs: [serviceUUID]
         )
-        await mockCentral.registerPeripheral(discovered, services: [serviceMetadata])
+        await mockCentral2.registerPeripheral(discovered, services: [serviceMetadata])
 
         // Discover and call error-throwing method
         let actors = try await centralSystem.discover(ErrorThrowingActor.self, timeout: 1.0)
@@ -255,23 +312,49 @@ struct ErrorHandlingTests {
             _ = try await remoteActor.alwaysThrows()
             Issue.record("Expected method to throw")
         } catch {
-            // Success - error was propagated over RPC
+            // Success - error was propagated over RPC via bridge
             // Note: The specific error type might be wrapped
         }
     }
 
     @Test("Conditional error throwing")
     func testConditionalError() async throws {
-        let peripheralSystem = await BLEActorSystem.mock()
-        let centralSystem = await BLEActorSystem.mock()
+        // Reset bridge before test
+        await MockBLEBridge.shared.reset()
+
+        // Configure managers to use bridge
+        var peripheralConfig = MockPeripheralManager.Configuration()
+        peripheralConfig.useBridge = true
+
+        var centralConfig = MockCentralManager.Configuration()
+        centralConfig.useBridge = true
+
+        // Peripheral system
+        let mockPeripheral1 = MockPeripheralManager(configuration: peripheralConfig)
+        let mockCentral1 = MockCentralManager(configuration: centralConfig)
+        let peripheralSystem = BLEActorSystem(
+            peripheralManager: mockPeripheral1,
+            centralManager: mockCentral1
+        )
+
+        // Central system
+        let mockPeripheral2 = MockPeripheralManager(configuration: peripheralConfig)
+        let mockCentral2 = MockCentralManager(configuration: centralConfig)
+        let centralSystem = BLEActorSystem(
+            peripheralManager: mockPeripheral2,
+            centralManager: mockCentral2
+        )
+
+        // Wait for systems to be ready
+        try await TestHelpers.waitForReady(peripheralSystem)
+        try await TestHelpers.waitForReady(centralSystem)
 
         let errorActor = ErrorThrowingActor(actorSystem: peripheralSystem)
-        try await peripheralSystem.startAdvertising(errorActor)
 
-        guard let mockCentral = await centralSystem.mockCentralManager() else {
-            Issue.record("Expected mock central manager")
-            return
-        }
+        // Set peripheral ID for bridge routing
+        await mockPeripheral1.setPeripheralID(errorActor.id)
+
+        try await peripheralSystem.startAdvertising(errorActor)
 
         let serviceUUID = UUID.serviceUUID(for: ErrorThrowingActor.self)
         let serviceMetadata = ServiceMapper.createServiceMetadata(from: ErrorThrowingActor.self)
@@ -280,7 +363,7 @@ struct ErrorHandlingTests {
             id: errorActor.id,
             serviceUUIDs: [serviceUUID]
         )
-        await mockCentral.registerPeripheral(discovered, services: [serviceMetadata])
+        await mockCentral2.registerPeripheral(discovered, services: [serviceMetadata])
 
         let actors = try await centralSystem.discover(ErrorThrowingActor.self, timeout: 1.0)
         #expect(actors.count == 1)
@@ -296,7 +379,7 @@ struct ErrorHandlingTests {
             _ = try await remoteActor.throwsIf(true)
             Issue.record("Expected method to throw")
         } catch {
-            // Success - error thrown as expected
+            // Success - error thrown as expected via bridge
         }
     }
 
@@ -307,12 +390,12 @@ struct ErrorHandlingTests {
         var config = TestHelpers.fastPeripheralConfig()
         config.shouldFailServiceAdd = true
 
-        let system = await BLEActorSystem.mock(peripheralConfig: config)
-
-        guard let mockPeripheral = await system.mockPeripheralManager() else {
-            Issue.record("Expected mock peripheral manager")
-            return
-        }
+        let mockPeripheral = MockPeripheralManager(configuration: config)
+        let mockCentral = MockCentralManager()
+        let system = BLEActorSystem(
+            peripheralManager: mockPeripheral,
+            centralManager: mockCentral
+        )
 
         let service = TestHelpers.createSimpleService()
 
@@ -332,12 +415,12 @@ struct ErrorHandlingTests {
 
     @Test("Invalid data handling")
     func testInvalidData() async throws {
-        let centralSystem = await BLEActorSystem.mock()
-
-        guard let mockCentral = await centralSystem.mockCentralManager() else {
-            Issue.record("Expected mock central manager")
-            return
-        }
+        let mockPeripheral = MockPeripheralManager()
+        let mockCentral = MockCentralManager()
+        let centralSystem = BLEActorSystem(
+            peripheralManager: mockPeripheral,
+            centralManager: mockCentral
+        )
 
         let peripheralID = UUID()
         let service = TestHelpers.createSimpleService()
