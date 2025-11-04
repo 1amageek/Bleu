@@ -15,22 +15,18 @@ struct BLETransportTests {
         // Fragment data
         let packets = await transport.fragment(testData)
         #expect(packets.count > 1)
-        
-        // Reassemble packets
+
+        // Reassemble packets using packPacket for proper binary format
         var reassembledData: Data?
-        for (index, packet) in packets.enumerated() {
-            // Create packet data with header
-            var packetData = Data()
-            packetData.append(contentsOf: withUnsafeBytes(of: packet.id.uuid) { Data($0) })
-            packetData.append(contentsOf: withUnsafeBytes(of: UInt16(index).bigEndian) { Data($0) })
-            packetData.append(contentsOf: withUnsafeBytes(of: UInt16(packets.count).bigEndian) { Data($0) })
-            packetData.append(packet.payload)
-            
+        for packet in packets {
+            // Use the transport's pack method to create proper binary format
+            let packetData = await transport.packPacket(packet)
+
             if let complete = await transport.receive(packetData) {
                 reassembledData = complete
             }
         }
-        
+
         #expect(reassembledData == testData)
     }
     
@@ -69,54 +65,7 @@ struct UUIDExtensionsTests {
     // Will be re-added when distributed actor support is stabilized
 }
 
-@Suite("Event Bridge Tests")
-struct EventBridgeTests {
-    
-    @Test("Subscribe and unsubscribe")
-    func testSubscription() async {
-        let bridge = EventBridge.shared
-        let actorID = UUID()
-        
-        // Use an actor to safely manage state
-        actor EventReceiver {
-            private(set) var receivedEvent = false
-            
-            func markReceived() {
-                receivedEvent = true
-            }
-        }
-        
-        let receiver = EventReceiver()
-        
-        await bridge.subscribe(actorID) { event in
-            await receiver.markReceived()
-        }
-        
-        // Distribute a test event
-        await bridge.distribute(.stateChanged(.poweredOn))
-        
-        // Give some time for async processing
-        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
-        
-        let eventReceived = await receiver.receivedEvent
-        #expect(eventReceived)
-        
-        // Clean up
-        await bridge.unsubscribe(actorID)
-    }
-    
-    @Test("RPC characteristic registration")
-    func testRPCCharacteristicRegistration() async {
-        let bridge = EventBridge.shared
-        let actorID = UUID()
-        let charUUID = UUID()
-        
-        await bridge.registerRPCCharacteristic(charUUID, for: actorID)
-        
-        // Unregister
-        await bridge.unregisterRPCCharacteristic(for: actorID)
-    }
-}
+// Note: Event Bridge Tests moved to EventBridgeTests.swift
 
 // Note: Instance Registry tests removed due to distributed actor compilation issues
 // Will be re-added when distributed actor support is stabilized

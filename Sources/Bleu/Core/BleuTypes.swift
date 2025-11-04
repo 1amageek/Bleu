@@ -1,5 +1,6 @@
 import Foundation
 import CoreBluetooth
+import ActorRuntime
 
 // MARK: - Core Types
 
@@ -222,36 +223,6 @@ public struct ConnectionOptions: Sendable, Codable {
 }
 
 // MARK: - Invocation Envelopes
-
-/// Envelope for multi-argument RPC invocations
-public struct InvocationEnvelope: Codable, Sendable {
-    public let id: UUID
-    public let actorID: UUID
-    public let methodName: String
-    public let arguments: [Data]
-    public let version: String
-    
-    public init(actorID: UUID, methodName: String, arguments: [Data], version: String = "1.0") {
-        self.id = UUID()
-        self.actorID = actorID
-        self.methodName = methodName
-        self.arguments = arguments
-        self.version = version
-    }
-}
-
-/// Response envelope for RPC results
-public struct ResponseEnvelope: Codable, Sendable {
-    public let id: UUID  // Matches InvocationEnvelope.id
-    public let result: Data?
-    public let error: Data?  // Encoded error
-    public let version: String
-    
-    public init(id: UUID, result: Data? = nil, error: Data? = nil, version: String = "1.0") {
-        self.id = id
-        self.result = result
-        self.error = error
-        self.version = version
-    }
-}
+// Note: InvocationEnvelope and ResponseEnvelope are now provided by ActorRuntime
+// Import ActorRuntime to use these types
 

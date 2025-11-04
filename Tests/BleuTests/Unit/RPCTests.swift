@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import Distributed
+import ActorRuntime
 @testable import Bleu
 
 /// Test suite for RPC functionality
@@ -113,23 +114,26 @@ struct RPCTests {
     @Test("Invocation Envelope")
     func testInvocationEnvelope() throws {
         let actorID = UUID()
+        let arguments = [Data([1, 2, 3])]
+        let argumentsData = try JSONEncoder().encode(arguments)
+
         let envelope = InvocationEnvelope(
-            actorID: actorID,
-            methodName: "testMethod",
-            arguments: [Data([1, 2, 3])]
+            recipientID: actorID.uuidString,
+            senderID: nil,
+            target: "testMethod",
+            arguments: argumentsData
         )
-        
-        #expect(envelope.actorID == actorID)
-        #expect(envelope.methodName == "testMethod")
-        #expect(envelope.arguments.count == 1)
-        #expect(envelope.version == "1.0")
-        
+
+        #expect(envelope.recipientID == actorID.uuidString)
+        #expect(envelope.target == "testMethod")
+        #expect(envelope.metadata.version == "1.0")
+
         // Test serialization
         let data = try JSONEncoder().encode(envelope)
         let decoded = try JSONDecoder().decode(InvocationEnvelope.self, from: data)
-        
-        #expect(decoded.actorID == actorID)
-        #expect(decoded.methodName == "testMethod")
+
+        #expect(decoded.recipientID == actorID.uuidString)
+        #expect(decoded.target == "testMethod")
         #expect(decoded.arguments == envelope.arguments)
     }
     
@@ -138,46 +142,54 @@ struct RPCTests {
         let id = UUID()
         let resultData = Data([4, 5, 6])
         let envelope = ResponseEnvelope(
-            id: id,
-            result: resultData
+            callID: id.uuidString,
+            result: .success(resultData)
         )
-        
-        #expect(envelope.id == id)
-        #expect(envelope.result == resultData)
-        #expect(envelope.error == nil)
-        #expect(envelope.version == "1.0")
-        
+
+        #expect(envelope.callID == id.uuidString)
+        switch envelope.result {
+        case .success(let data):
+            #expect(data == resultData)
+        default:
+            Issue.record("Expected success result")
+        }
+
         // Test error envelope
-        let errorData = Data([7, 8, 9])
+        let error = RuntimeError.methodNotFound("testMethod")
         let errorEnvelope = ResponseEnvelope(
-            id: id,
-            error: errorData
+            callID: id.uuidString,
+            result: .failure(error)
         )
-        
-        #expect(errorEnvelope.result == nil)
-        #expect(errorEnvelope.error == errorData)
+
+        switch errorEnvelope.result {
+        case .failure(let err):
+            #expect(err == error)
+        default:
+            Issue.record("Expected failure result")
+        }
     }
     
     @Test("BLEActorSystem RPC Handling")
     func testBLEActorSystemRPC() async throws {
-        let system = BLEActorSystem.shared
+        // Use mock system - no TCC required
+        let system = await BLEActorSystem.mock()
         let registry = MethodRegistry.shared
-        
+
         struct TestData: Codable, Sendable {
             let message: String
         }
-        
+
         // Register the actor in instance registry
         let instanceRegistry = InstanceRegistry.shared
         // Create a dummy distributed actor for testing
-        distributed actor TestActor {
+        distributed actor TestActor: PeripheralActor {
             typealias ActorSystem = BLEActorSystem
-            
+
             distributed func testMethod() async -> String {
                 return "Test"
             }
         }
-        
+
         let testActor = TestActor(actorSystem: system)
         let actorID = testActor.id
         await instanceRegistry.registerLocal(testActor)
@@ -193,23 +205,28 @@ struct RPCTests {
         )
         
         // Create invocation envelope
+        let argumentsData = try JSONEncoder().encode([Data]())
         let envelope = InvocationEnvelope(
-            actorID: actorID,
-            methodName: "getMessage",
-            arguments: []
+            recipientID: actorID.uuidString,
+            senderID: nil,
+            target: "getMessage",
+            arguments: argumentsData
         )
-        
+
         // Handle the RPC
         let response = await system.handleIncomingRPC(envelope)
-        
+
         // Verify response
-        #expect(response.id == envelope.id)
-        #expect(response.error == nil)
-        #expect(response.result != nil)
-        
-        if let resultData = response.result {
+        #expect(response.callID == envelope.callID)
+
+        switch response.result {
+        case .success(let resultData):
             let result = try JSONDecoder().decode(TestData.self, from: resultData)
             #expect(result.message == "RPC works!")
+        case .failure(let error):
+            Issue.record("Expected success, got error: \(error)")
+        case .void:
+            Issue.record("Expected success with data, got void")
         }
         
         // Clean up

@@ -1,6 +1,7 @@
 import Foundation
 import CoreBluetooth
 import Distributed
+import ActorRuntime
 import os
 
 /// Actor to manage system initialization state
@@ -22,16 +23,13 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
     public typealias ResultHandler = BLEResultHandler
     public typealias SerializationRequirement = Codable
     
-    /// Shared instance
-    public static let shared = BLEActorSystem()
-    
     // Core components
     private let instanceRegistry = InstanceRegistry.shared
-    private let eventBridge = EventBridge.shared
-    
-    // Local actors for BLE operations
-    private let localPeripheral: LocalPeripheralActor
-    private let localCentral: LocalCentralActor
+    private let eventBridge = EventBridge()  // Each system gets its own instance
+
+    // BLE manager protocol instances (can be production or mock)
+    private let peripheralManager: BLEPeripheralManagerProtocol
+    private let centralManager: BLECentralManagerProtocol
     
     // Connection tracking
     private actor ProxyManager {
@@ -63,30 +61,177 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
             await bootstrap.isReady
         }
     }
-    
-    public init() {
-        self.localPeripheral = LocalPeripheralActor()
-        self.localCentral = LocalCentralActor()
-        
+
+    // MARK: - Initialization (Internal with DI)
+
+    /// Internal initializer with dependency injection
+    /// - Parameters:
+    ///   - peripheralManager: BLE peripheral manager implementation
+    ///   - centralManager: BLE central manager implementation
+    /// - Note: Managers should have their initialize() method called BEFORE or during construction
+    internal init(
+        peripheralManager: BLEPeripheralManagerProtocol,
+        centralManager: BLECentralManagerProtocol
+    ) {
+        self.peripheralManager = peripheralManager
+        self.centralManager = centralManager
+
         Task {
-            await localPeripheral.initialize()
-            await localCentral.initialize()
+            // Wait for managers to be powered on before setting up event handlers
+            _ = await peripheralManager.waitForPoweredOn()
+            _ = await centralManager.waitForPoweredOn()
+
             await setupEventHandlers()
             await bootstrap.markReady()
+        }
+    }
+
+    // MARK: - Factory Methods
+
+    /// Create production instance with real CoreBluetooth
+    /// - Note: Requires Bluetooth permissions (TCC)
+    /// - Warning: Will trigger TCC permission check on iOS/macOS
+    public static func production() -> BLEActorSystem {
+        let peripheral = CoreBluetoothPeripheralManager()
+        let central = CoreBluetoothCentralManager()
+
+        // Initialize managers BEFORE creating BLEActorSystem
+        Task {
+            await peripheral.initialize()  // TCC check happens here
+            await central.initialize()     // TCC check happens here
+        }
+
+        return BLEActorSystem(
+            peripheralManager: peripheral,
+            centralManager: central
+        )
+    }
+
+    /// Create mock instance for testing (async version - recommended)
+    /// - Parameters:
+    ///   - peripheralConfig: Configuration for mock peripheral manager
+    ///   - centralConfig: Configuration for mock central manager
+    /// - Returns: BLEActorSystem with mock implementations, guaranteed to be ready
+    /// - Note: No Bluetooth permissions required, no hardware needed
+    /// - Important: This async version waits for the system to be ready before returning
+    public static func mock(
+        peripheralConfig: MockPeripheralManager.Configuration = .init(),
+        centralConfig: MockCentralManager.Configuration = .init()
+    ) async -> BLEActorSystem {
+        let system = BLEActorSystem(
+            peripheralManager: MockPeripheralManager(
+                configuration: peripheralConfig
+            ),
+            centralManager: MockCentralManager(
+                configuration: centralConfig
+            )
+        )
+
+        // Wait for system to be ready (should be almost instant with mocks)
+        var retries = 1000  // 10 seconds max
+        while retries > 0 {
+            if await system.ready {
+                break
+            }
+            try? await Task.sleep(nanoseconds: 10_000_000)  // 10ms
+            retries -= 1
+        }
+
+        return system
+    }
+
+    /// Create mock instance for testing (synchronous version - legacy)
+    /// - Parameters:
+    ///   - peripheralConfig: Configuration for mock peripheral manager
+    ///   - centralConfig: Configuration for mock central manager
+    /// - Returns: BLEActorSystem with mock implementations
+    /// - Note: No Bluetooth permissions required, no hardware needed
+    /// - Warning: System may not be immediately ready. Consider using async version instead.
+    /// - Important: Deprecated in favor of async mock() method
+    @available(*, deprecated, message: "Use async mock() method for guaranteed readiness")
+    public static func mockSync(
+        peripheralConfig: MockPeripheralManager.Configuration = .init(),
+        centralConfig: MockCentralManager.Configuration = .init()
+    ) -> BLEActorSystem {
+        return BLEActorSystem(
+            peripheralManager: MockPeripheralManager(
+                configuration: peripheralConfig
+            ),
+            centralManager: MockCentralManager(
+                configuration: centralConfig
+            )
+        )
+    }
+
+    // MARK: - Testing Support
+
+    /// Access to mock peripheral manager for testing
+    /// - Returns: Mock peripheral manager if the system was created with `.mock()`, otherwise nil
+    /// - Note: Only available when using mock implementations
+    /// - Important: Use this method instead of direct downcasting to access mock-specific APIs
+    public func mockPeripheralManager() async -> MockPeripheralManager? {
+        return peripheralManager as? MockPeripheralManager
+    }
+
+    /// Access to mock central manager for testing
+    /// - Returns: Mock central manager if the system was created with `.mock()`, otherwise nil
+    /// - Note: Only available when using mock implementations
+    /// - Important: Use this method instead of direct downcasting to access mock-specific APIs
+    public func mockCentralManager() async -> MockCentralManager? {
+        return centralManager as? MockCentralManager
+    }
+
+    // MARK: - Backward Compatibility
+
+    /// Shared instance - now uses production() by default
+    /// - Warning: Requires Bluetooth permissions
+    /// - Note: Existing code using `.shared` continues to work unchanged
+    public static let shared: BLEActorSystem = .production()
+
+    /// Legacy initializer for backward compatibility
+    /// - Note: Creates production instance identical to `.shared`
+    /// - Warning: Requires Bluetooth permissions (TCC)
+    public convenience init() {
+        // Create dependencies directly without going through .production()
+        let peripheral = CoreBluetoothPeripheralManager()
+        let central = CoreBluetoothCentralManager()
+
+        // Pass uninitialized managers to internal init
+        self.init(
+            peripheralManager: peripheral,
+            centralManager: central
+        )
+
+        // Start initialization after BLEActorSystem is constructed
+        Task {
+            await peripheral.initialize()
+            await central.initialize()
         }
     }
     
     /// Setup event handlers for BLE events
     private func setupEventHandlers() async {
-        // Monitor events from local actors
+        // Register peripheral manager for sending RPC responses
+        await eventBridge.setPeripheralManager(peripheralManager)
+
+        // Register RPC request handler so peripheral can process incoming RPCs
+        await eventBridge.setRPCRequestHandler { [weak self] envelope in
+            guard let self = self else {
+                let error = RuntimeError.transportFailed("Actor system deallocated")
+                return ResponseEnvelope(callID: envelope.callID, result: .failure(error))
+            }
+            return await self.handleIncomingRPC(envelope)
+        }
+
+        // Monitor events from BLE managers
         Task {
-            for await event in await localPeripheral.events {
+            for await event in peripheralManager.events {
                 await eventBridge.distribute(event)
             }
         }
-        
+
         Task {
-            for await event in await localCentral.events {
+            for await event in centralManager.events {
                 await eventBridge.distribute(event)
             }
         }
@@ -153,32 +298,46 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         
         // Create invocation envelope
         let encoder = invocation  // We know it's BLEInvocationEncoder from the type system
-        
+
+        // Encode arguments as JSON array in a single step (not double-encoding)
+        // The arguments field is an opaque Data blob - we choose JSON array encoding
+        // BLETransport will handle MTU fragmentation at the transport layer
+        let arguments = encoder.arguments
+        let argumentsData: Data
+        if arguments.isEmpty {
+            // Empty data for no-argument methods
+            argumentsData = Data("[]".utf8)  // Empty JSON array
+        } else {
+            // Single serialization: [Data, Data, ...] → JSON array → Data
+            argumentsData = try JSONEncoder().encode(arguments)
+        }
+
         let envelope = InvocationEnvelope(
-            actorID: actor.id,
-            methodName: methodName,
-            arguments: encoder.arguments
+            recipientID: actor.id.uuidString,
+            senderID: nil,  // Central doesn't need sender ID for BLE
+            target: methodName,
+            arguments: argumentsData
         )
         let messageData = try JSONEncoder().encode(envelope)
         
         // Register with event bridge and send
-        async let responseEnvelope = eventBridge.registerRPCCall(envelope.id, peripheralID: actor.id)
+        async let responseEnvelope = eventBridge.registerRPCCall(envelope.callID, peripheralID: actor.id)
         try await proxy.sendMessage(messageData)
-        
+
         // Wait for response
         let response = try await responseEnvelope
-        
-        if let errorData = response.error {
-            let error = try JSONDecoder().decode(BleuError.self, from: errorData)
-            throw error
+
+        // Handle the response using InvocationResult enum
+        switch response.result {
+        case .success(let resultData):
+            let result = try JSONDecoder().decode(Res.self, from: resultData)
+            return result
+        case .void:
+            throw BleuError.invalidData  // Should not happen for non-void calls
+        case .failure(let runtimeError):
+            // Convert RuntimeError to BleuError
+            throw convertRuntimeError(runtimeError)
         }
-        
-        guard let resultData = response.result else {
-            throw BleuError.invalidData
-        }
-        
-        let result = try JSONDecoder().decode(Res.self, from: resultData)
-        return result
     }
     
     public func remoteCallVoid<Act, Err>(
@@ -224,40 +383,52 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
             // Get the target actor from registry
             let instanceRegistry = InstanceRegistry.shared
             let methodRegistry = MethodRegistry.shared
-            
+
+            // Parse actorID from recipientID (convert String back to UUID)
+            guard let actorID = UUID(uuidString: envelope.recipientID) else {
+                let error = RuntimeError.invalidEnvelope("Invalid recipient ID: \(envelope.recipientID)")
+                return ResponseEnvelope(callID: envelope.callID, result: .failure(error))
+            }
+
             // Check if actor is registered locally
-            guard await instanceRegistry.isRegistered(envelope.actorID) else {
-                let error = BleuError.actorNotFound(envelope.actorID)
-                let errorData = try JSONEncoder().encode(error)
-                return ResponseEnvelope(id: envelope.id, error: errorData)
+            guard await instanceRegistry.isRegistered(actorID) else {
+                let error = RuntimeError.actorNotFound(envelope.recipientID)
+                return ResponseEnvelope(callID: envelope.callID, result: .failure(error))
             }
-            
+
             // Check if method is registered
-            guard await methodRegistry.hasMethod(actorID: envelope.actorID, methodName: envelope.methodName) else {
-                let error = BleuError.methodNotSupported(envelope.methodName)
-                let errorData = try JSONEncoder().encode(error)
-                return ResponseEnvelope(id: envelope.id, error: errorData)
+            guard await methodRegistry.hasMethod(actorID: actorID, methodName: envelope.target) else {
+                let error = RuntimeError.methodNotFound(envelope.target)
+                return ResponseEnvelope(callID: envelope.callID, result: .failure(error))
             }
-            
+
+            // Decode arguments array from the opaque Data blob
+            // This reverses the single serialization done in remoteCall
+            let arguments: [Data]
+            if envelope.arguments.isEmpty || envelope.arguments == Data("[]".utf8) {
+                arguments = []
+            } else {
+                arguments = try JSONDecoder().decode([Data].self, from: envelope.arguments)
+            }
+
             // Execute the method using the registry
             let resultData = try await methodRegistry.execute(
-                actorID: envelope.actorID,
-                methodName: envelope.methodName,
-                arguments: envelope.arguments
+                actorID: actorID,
+                methodName: envelope.target,
+                arguments: arguments
             )
-            
-            return ResponseEnvelope(id: envelope.id, result: resultData)
-            
+
+            return ResponseEnvelope(callID: envelope.callID, result: .success(resultData))
+
         } catch {
-            // Return error response
-            do {
-                let bleuError = error as? BleuError ?? BleuError.rpcFailed(error.localizedDescription)
-                let errorData = try JSONEncoder().encode(bleuError)
-                return ResponseEnvelope(id: envelope.id, error: errorData)
-            } catch {
-                // If we can't even encode the error, return a generic error
-                return ResponseEnvelope(id: envelope.id, error: Data())
+            // Convert BleuError or other errors to RuntimeError
+            let runtimeError: RuntimeError
+            if let bleuError = error as? BleuError {
+                runtimeError = convertToRuntimeError(bleuError)
+            } else {
+                runtimeError = .executionFailed("Method execution failed", underlying: error.localizedDescription)
             }
+            return ResponseEnvelope(callID: envelope.callID, result: .failure(runtimeError))
         }
     }
     
@@ -269,29 +440,35 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         guard await ready else {
             throw BleuError.bluetoothUnavailable
         }
-        
+
         // Get service metadata from the actor type
         let metadata = ServiceMapper.createServiceMetadata(from: T.self)
-        
-        // Setup service in local peripheral
-        try await localPeripheral.setupService(from: metadata)
-        
+
+        // For mock peripherals, set the peripheral ID BEFORE adding service
+        // so that characteristics can be registered with the bridge
+        if let mockPeripheral = peripheralManager as? MockPeripheralManager {
+            await mockPeripheral.setPeripheralID(peripheral.id)
+        }
+
+        // Add service to peripheral manager
+        try await peripheralManager.add(metadata)
+
         // Create advertisement data
         let advertisementData = AdvertisementData(
             localName: String(describing: T.self),
             serviceUUIDs: [metadata.uuid]
         )
-        
+
         // Start advertising
-        try await localPeripheral.startAdvertising(advertisementData)
-        
+        try await peripheralManager.startAdvertising(advertisementData)
+
         // Register the actor
         actorReady(peripheral)
     }
-    
+
     /// Stop advertising
     public func stopAdvertising() async {
-        await localPeripheral.stopAdvertising()
+        await peripheralManager.stopAdvertising()
     }
     
     // MARK: - Central Mode
@@ -320,13 +497,13 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         let serviceUUID = UUID.serviceUUID(for: type)
         var discoveredActors: [T] = []
 
-        for await discovered in await localCentral.scan(
-            for: [CBUUID(nsuuid: serviceUUID)],
+        for await discovered in await centralManager.scanForPeripherals(
+            withServices: [serviceUUID],
             timeout: timeout
         ) {
             do {
                 // Connect to the peripheral first
-                try await localCentral.connect(to: discovered.id, timeout: 10.0)
+                try await centralManager.connect(to: discovered.id, timeout: 10.0)
 
                 // Update BLETransport MTU based on connected peripheral
                 await updateTransportMTU(for: discovered.id)
@@ -364,7 +541,7 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
 
                 // Cleanup: remove any partial state and disconnect
                 await cleanupPeripheralState(discovered.id)
-                try? await localCentral.disconnect(from: discovered.id)
+                try? await centralManager.disconnect(from: discovered.id)
 
                 // Continue with next peripheral
                 continue
@@ -375,7 +552,7 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
 
                 // Cleanup: remove any partial state and disconnect
                 await cleanupPeripheralState(discovered.id)
-                try? await localCentral.disconnect(from: discovered.id)
+                try? await centralManager.disconnect(from: discovered.id)
 
                 // Continue with next peripheral
                 continue
@@ -391,7 +568,7 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         as type: T.Type
     ) async throws -> T {
         // Connect if not already connected
-        try await localCentral.connect(to: peripheralID)
+        try await centralManager.connect(to: peripheralID, timeout: 10.0)
 
         // Update BLETransport MTU based on connected peripheral
         await updateTransportMTU(for: peripheralID)
@@ -414,7 +591,7 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         await cleanupPeripheralState(peripheralID)
 
         defer { resignID(peripheralID) }
-        try await localCentral.disconnect(from: peripheralID)
+        try await centralManager.disconnect(from: peripheralID)
     }
     
     /// Check if connected to a peripheral
@@ -443,7 +620,7 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
     /// Update BLETransport MTU based on connected peripheral
     private func updateTransportMTU(for peripheralID: UUID) async {
         // Get the maximum write value length for the connected peripheral
-        if let maxWriteLength = await localCentral.getMaximumWriteValueLength(for: peripheralID, type: .withResponse) {
+        if let maxWriteLength = await centralManager.maximumWriteValueLength(for: peripheralID, type: .withResponse) {
             let transport = BLETransport.shared
             await transport.updateMaxPayloadSize(maxWriteLength: maxWriteLength)
         }
@@ -466,9 +643,9 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         // Phase 1: Discovery (throws on failure, no cleanup needed)
 
         // Discover the actor's service
-        let services = try await localCentral.discoverServices(
+        let services = try await centralManager.discoverServices(
             for: id,
-            serviceUUIDs: [CBUUID(nsuuid: serviceUUID)]
+            serviceUUIDs: [serviceUUID]
         )
 
         guard !services.isEmpty else {
@@ -476,10 +653,10 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         }
 
         // Discover characteristics for the service
-        let characteristics = try await localCentral.discoverCharacteristics(
-            for: CBUUID(nsuuid: serviceUUID),
+        let characteristics = try await centralManager.discoverCharacteristics(
+            for: serviceUUID,
             in: id,
-            characteristicUUIDs: [CBUUID(nsuuid: rpcCharUUID)]
+            characteristicUUIDs: [rpcCharUUID]
         )
 
         guard !characteristics.isEmpty else {
@@ -488,7 +665,7 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
 
         // Phase 2: Enable notifications BEFORE registering (critical - must succeed first)
         do {
-            try await localCentral.setNotifyValue(true, for: CBUUID(nsuuid: rpcCharUUID), in: id)
+            try await centralManager.setNotifyValue(true, for: rpcCharUUID, in: id)
         } catch {
             // If notification setup fails, throw immediately (nothing registered yet)
             throw error
@@ -499,7 +676,7 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         // Create a proxy for the remote peripheral with RPC characteristic
         let proxy = PeripheralActorProxy(
             id: id,
-            localCentral: localCentral,
+            centralManager: centralManager,
             rpcCharUUID: rpcCharUUID
         )
 
@@ -518,6 +695,76 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         // Register RPC characteristic mapping
         await eventBridge.registerRPCCharacteristic(rpcCharUUID, for: id)
     }
+
+    // MARK: - Error Conversion
+
+    /// Convert RuntimeError to BleuError
+    private func convertRuntimeError(_ error: RuntimeError) -> BleuError {
+        switch error {
+        case .actorNotFound(let id):
+            if let uuid = UUID(uuidString: id) {
+                return .actorNotFound(uuid)
+            }
+            return .invalidData
+        case .actorDeallocated(let id):
+            if let uuid = UUID(uuidString: id) {
+                return .actorNotFound(uuid)
+            }
+            return .invalidData
+        case .methodNotFound(let method):
+            return .methodNotSupported(method)
+        case .executionFailed(let message, _):
+            return .rpcFailed(message)
+        case .serializationFailed(_):
+            return .invalidData
+        case .transportFailed(let message):
+            return .connectionFailed(message)
+        case .timeout(_):
+            return .connectionTimeout
+        case .invalidEnvelope(_):
+            return .invalidData
+        case .versionMismatch(expected: _, actual: _):
+            return .invalidData
+        }
+    }
+
+    /// Convert BleuError to RuntimeError
+    private func convertToRuntimeError(_ error: BleuError) -> RuntimeError {
+        switch error {
+        case .actorNotFound(let uuid):
+            return .actorNotFound(uuid.uuidString)
+        case .methodNotSupported(let method):
+            return .methodNotFound(method)
+        case .rpcFailed(let message):
+            return .executionFailed("RPC failed", underlying: message)
+        case .invalidData:
+            return .serializationFailed("Invalid data")
+        case .connectionFailed(let message):
+            return .transportFailed(message)
+        case .connectionTimeout:
+            return .timeout(10.0)
+        case .bluetoothUnavailable:
+            return .transportFailed("Bluetooth unavailable")
+        case .bluetoothUnauthorized:
+            return .transportFailed("Bluetooth unauthorized")
+        case .bluetoothPoweredOff:
+            return .transportFailed("Bluetooth powered off")
+        case .serviceNotFound(let uuid):
+            return .transportFailed("Service not found: \(uuid)")
+        case .characteristicNotFound(let uuid):
+            return .transportFailed("Characteristic not found: \(uuid)")
+        case .peripheralNotFound(let uuid):
+            return .actorNotFound(uuid.uuidString)
+        case .disconnected:
+            return .transportFailed("Disconnected")
+        case .incompatibleVersion(let detected, let required):
+            return .versionMismatch(expected: String(required), actual: String(detected))
+        case .quotaExceeded:
+            return .transportFailed("Quota exceeded")
+        case .operationNotSupported:
+            return .transportFailed("Operation not supported")
+        }
+    }
 }
 
 // MARK: - Supporting Types
@@ -526,16 +773,16 @@ private struct VoidResult: Codable {}
 
 private struct PeripheralActorProxy {
     let id: UUID
-    let localCentral: LocalCentralActor
+    let centralManager: BLECentralManagerProtocol
     let rpcCharUUID: UUID
-    
+
     func sendMessage(_ data: Data) async throws {
         // Use BLETransport for fragmentation if needed
         let transport = BLETransport.shared
         try await transport.send(
             data,
             to: id,
-            using: localCentral,
+            using: centralManager,
             characteristicUUID: rpcCharUUID
         )
     }

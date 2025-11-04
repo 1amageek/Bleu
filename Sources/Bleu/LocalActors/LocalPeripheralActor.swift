@@ -1,5 +1,6 @@
 import Foundation
 @preconcurrency import CoreBluetooth
+import ActorRuntime
 import os
 
 /// Local actor that wraps CBPeripheralManager for BLE peripheral operations
@@ -230,43 +231,15 @@ extension LocalPeripheralActor {
     
     // Add RPC invocation handler
     private func handleRPCInvocation(data: Data, characteristicUUID: UUID) async {
-        do {
-            // Decode the invocation envelope
-            let envelope = try JSONDecoder().decode(InvocationEnvelope.self, from: data)
-            
-            // Use BLEActorSystem to handle the RPC
-            let actorSystem = BLEActorSystem.shared
-            let responseEnvelope = await actorSystem.handleIncomingRPC(envelope)
-            
-            // Encode response
-            let responseData = try JSONEncoder().encode(responseEnvelope)
-            
-            // Use BLETransport to fragment response if needed
-            let transport = BLETransport.shared
-            let packets = await transport.fragment(responseData)
-            
-            // Send each packet
-            for packet in packets {
-                // Use BLETransport's binary packing for consistency
-                let packetData = await transport.packPacket(packet)
-                let success = try await updateValue(packetData, for: characteristicUUID)
-                
-                if !success {
-                    // Queue the response for later if the central isn't ready
-                    BleuLogger.rpc.warning("Could not send RPC response packet immediately, central may not be ready")
-                    break
-                }
-                
-                // Small delay between packets
-                if packets.count > 1 {
-                    try await Task.sleep(nanoseconds: 10_000_000) // 10ms
-                }
-            }
-            
-        } catch {
-            BleuLogger.rpc.error("Error handling RPC invocation: \(error.localizedDescription)")
-            // Don't send response for invalid data - central will timeout
-        }
+        // Emit write event to EventBridge for RPC processing
+        // EventBridge has the correct BLEActorSystem instance registered via setRPCRequestHandler()
+        // This maintains proper separation of concerns and instance isolation
+        await messageChannel.send(.writeRequestReceived(
+            UUID(),  // central ID (CoreBluetooth limitation - unavailable in peripheral role)
+            UUID(),  // service UUID (would need to be tracked separately)
+            characteristicUUID,
+            data     // Complete RPC data (already reassembled from fragments by BLETransport)
+        ))
     }
     
     func handleSubscription(

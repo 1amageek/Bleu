@@ -1,6 +1,7 @@
 import Foundation
 import CoreBluetooth
 import Distributed
+import ActorRuntime
 
 /// Event bridge for routing BLE events to distributed actors
 public actor EventBridge {
@@ -10,13 +11,19 @@ public actor EventBridge {
     
     /// Response handler for RPC calls
     public typealias ResponseHandler = @Sendable (ResponseEnvelope) async throws -> Void
-    
+
+    /// RPC request handler type (peripheral side)
+    public typealias RPCRequestHandler = @Sendable (InvocationEnvelope) async -> ResponseEnvelope
+
     // Event subscriptions
     private var eventHandlers: [UUID: EventHandler] = [:]
     private var characteristicSubscriptions: [UUID: Set<UUID>] = [:] // characteristic -> actor IDs
-    
+
     // RPC response handlers
     private var responseHandlers: [UUID: ResponseHandler] = [:]
+
+    // RPC request handler (peripheral side)
+    private var rpcRequestHandler: RPCRequestHandler?
     
     // Pending RPC calls
     private var pendingCalls: [UUID: CheckedContinuation<ResponseEnvelope, Error>] = [:]
@@ -29,10 +36,11 @@ public actor EventBridge {
     private var rpcCharacteristicByActor: [UUID: UUID] = [:] // actorID -> rpcCharUUID
     private var actorByRPCCharacteristic: [UUID: UUID] = [:] // rpcCharUUID -> actorID
     
-    /// Shared instance
+    /// Shared instance (deprecated - each BLEActorSystem should have its own)
+    @available(*, deprecated, message: "Use instance per BLEActorSystem instead of singleton")
     public static let shared = EventBridge()
-    
-    private init() {}
+
+    public init() {}
     
     // MARK: - Event Subscription
     
@@ -162,25 +170,80 @@ public actor EventBridge {
         }
     }
     
+    /// Set the RPC request handler (called by BLEActorSystem during initialization)
+    public func setRPCRequestHandler(_ handler: @escaping RPCRequestHandler) {
+        self.rpcRequestHandler = handler
+    }
+
+    /// Set the peripheral manager for sending RPC responses
+    /// Note: Not weak because BLEPeripheralManagerProtocol is a protocol, and we need to keep the reference
+    private var peripheralManager: BLEPeripheralManagerProtocol?
+
+    public func setPeripheralManager(_ manager: BLEPeripheralManagerProtocol) {
+        self.peripheralManager = manager
+    }
+
     /// Handle write requests (for RPC invocations)
     private func handleWriteRequest(_ characteristicUUID: UUID, data: Data) async {
+        // Unpack the data using BLETransport (handles fragmentation)
+        let transport = BLETransport.shared
+        guard let completeData = await transport.receive(data) else {
+            return  // Waiting for more fragments
+        }
+
         // Try to decode as InvocationEnvelope
-        guard let envelope = try? JSONDecoder().decode(InvocationEnvelope.self, from: data) else {
+        guard let envelope = try? JSONDecoder().decode(InvocationEnvelope.self, from: completeData) else {
             return
         }
-        
-        // Route to the target actor
-        if let handler = eventHandlers[envelope.actorID] {
-            // Create a synthetic event for the RPC invocation
-            do {
-                try await handler(.writeRequestReceived(
-                    envelope.actorID,
-                    UUID(), // service UUID would be determined by the actor
-                    characteristicUUID,
-                    data
-                ))
-            } catch {
-                BleuLogger.actorSystem.error("Write request handler failed: \(error.localizedDescription)")
+
+        // Process the RPC request if handler is set (peripheral side)
+        if let handler = rpcRequestHandler {
+            let response = await handler(envelope)
+
+            // Send response back via characteristic notification
+            if let responseData = try? JSONEncoder().encode(response),
+               let peripheralManager = peripheralManager {
+
+                // Use BLETransport to fragment response if needed
+                let transport = BLETransport.shared
+                let packets = await transport.fragment(responseData)
+
+                // Send each packet
+                for packet in packets {
+                    // Use BLETransport's binary packing for consistency
+                    let packetData = await transport.packPacket(packet)
+                    let success = try? await peripheralManager.updateValue(
+                        packetData,
+                        for: characteristicUUID,
+                        to: nil  // Broadcast to all subscribed centrals
+                    )
+
+                    if success != true {
+                        BleuLogger.rpc.warning("Could not send RPC response packet, central may not be ready")
+                        break
+                    }
+
+                    // Small delay between packets to prevent overwhelming the central
+                    if packets.count > 1 {
+                        try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
+                    }
+                }
+            }
+        } else {
+            // Fallback: route to event handlers
+            // Convert recipientID (String) to UUID
+            if let actorID = UUID(uuidString: envelope.recipientID),
+               let eventHandler = eventHandlers[actorID] {
+                do {
+                    try await eventHandler(.writeRequestReceived(
+                        actorID,
+                        UUID(), // service UUID would be determined by the actor
+                        characteristicUUID,
+                        data
+                    ))
+                } catch {
+                    BleuLogger.actorSystem.error("Write request handler failed: \(error.localizedDescription)")
+                }
             }
         }
     }
@@ -200,13 +263,18 @@ public actor EventBridge {
     }
     
     /// Register a pending RPC call
-    public func registerRPCCall(_ id: UUID, peripheralID: UUID? = nil) async throws -> ResponseEnvelope {
+    public func registerRPCCall(_ callID: String, peripheralID: UUID? = nil) async throws -> ResponseEnvelope {
+        // Convert String callID to UUID for internal tracking
+        guard let id = UUID(uuidString: callID) else {
+            throw BleuError.invalidData
+        }
+
         // Get timeout from configuration
         let timeoutSec = await BleuConfigurationManager.shared.current().rpcTimeout
-        
+
         return try await withCheckedThrowingContinuation { continuation in
             pendingCalls[id] = continuation
-            
+
             // Track peripheral association if provided
             if let peripheralID = peripheralID {
                 callToPeripheral[id] = peripheralID
@@ -215,7 +283,7 @@ public actor EventBridge {
                 }
                 peripheralCalls[peripheralID]?.insert(id)
             }
-            
+
             // Set timeout using configuration
             Task {
                 try? await Task.sleep(nanoseconds: UInt64(timeoutSec * 1_000_000_000))
@@ -228,17 +296,23 @@ public actor EventBridge {
     
     /// Handle an RPC response
     private func handleRPCResponse(_ envelope: ResponseEnvelope) async {
+        // Convert callID (String) to UUID for lookup
+        guard let callUUID = UUID(uuidString: envelope.callID) else {
+            BleuLogger.actorSystem.error("Invalid callID in response: \(envelope.callID)")
+            return
+        }
+
         // Atomically take the continuation to avoid race conditions
-        if let cont = takePending(envelope.id) {
+        if let cont = takePending(callUUID) {
             cont.resume(returning: envelope)
         }
-        
+
         // Also notify any response handlers
-        if let handler = responseHandlers.removeValue(forKey: envelope.id) {
+        if let handler = responseHandlers.removeValue(forKey: callUUID) {
             do {
                 try await handler(envelope)
             } catch {
-                BleuLogger.actorSystem.error("Response handler failed for envelope \(envelope.id): \(error.localizedDescription)")
+                BleuLogger.actorSystem.error("Response handler failed for envelope \(envelope.callID): \(error.localizedDescription)")
             }
         }
     }

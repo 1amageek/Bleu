@@ -247,21 +247,21 @@ public actor BLETransport {
     public func send(
         _ data: Data,
         to deviceID: UUID,
-        using localCentral: LocalCentralActor,
+        using centralManager: BLECentralManagerProtocol,
         characteristicUUID: UUID
     ) async throws {
         let packets = fragment(data)
-        
+
         for packet in packets {
             let packetData = pack(packet)
-            
-            try await localCentral.writeValue(
+
+            try await centralManager.writeValue(
                 packetData,
-                for: CBUUID(nsuuid: characteristicUUID),
+                for: characteristicUUID,
                 in: deviceID,
                 type: .withResponse
             )
-            
+
             // Small delay between packets to avoid overwhelming the connection
             if packets.count > 1 {
                 try await Task.sleep(nanoseconds: 10_000_000) // 10ms

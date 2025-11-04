@@ -222,22 +222,251 @@ Bleu uses an efficient binary packet format for BLE communication:
 
 ## 🧪 Testing
 
+Bleu 2 features a **Protocol-Oriented Testing Architecture** that enables comprehensive testing without requiring real Bluetooth hardware or TCC permissions. This architecture provides in-memory BLE simulation, allowing unit and integration tests to run in CI/CD environments.
+
+### Key Testing Benefits
+
+- ✅ **No Hardware Required**: Mock implementations simulate complete BLE behavior
+- ✅ **No TCC Permissions**: Unit and integration tests run without Bluetooth access
+- ✅ **Fast Execution**: Tests complete in seconds, not minutes
+- ✅ **CI/CD Friendly**: All tests (except hardware validation) run in automated environments
+- ✅ **Type-Safe**: Full type safety across mock and production implementations
+
+### Test Directory Structure
+
+```
+Tests/BleuTests/
+├── Unit/                          # Pure unit tests (no BLE)
+│   ├── UnitTests.swift            # Core functionality tests
+│   ├── RPCTests.swift             # RPC mechanism tests
+│   ├── EventBridgeTests.swift    # Event routing tests
+│   └── TransportLayerTests.swift # Message transport tests
+│
+├── Integration/                   # Mock-based integration tests
+│   ├── MockActorSystemTests.swift # Mock manager tests
+│   ├── FullWorkflowTests.swift    # Complete workflows
+│   └── ErrorHandlingTests.swift   # Error scenarios
+│
+├── Hardware/                      # Real BLE hardware tests
+│   └── RealBLETests.swift         # Requires real hardware
+│
+└── Mocks/                         # Test utilities
+    ├── TestHelpers.swift          # Common test helpers
+    └── MockActorExamples.swift    # Example distributed actors
+```
+
+### Running Tests
+
+```bash
+# Run all tests (unit + integration, skips hardware)
+swift test
+
+# Run specific test suite
+swift test --filter "Mock Actor System Tests"
+
+# Run with verbose output
+swift test --verbose
+
+# Parallel execution
+swift test --parallel
+```
+
+### Quick Start: Writing Tests
+
+#### Unit Tests (No BLE Dependency)
+
 ```swift
 import Testing
 @testable import Bleu
 
-@Test("Distributed actor communication")
-func testActorCommunication() async throws {
-    let actorSystem = BLEActorSystem.shared
-    
-    // Create a mock peripheral
-    let mockSensor = MockTemperatureSensor(actorSystem: actorSystem)
-    
-    // Test remote method invocation
-    let temperature = try await mockSensor.getTemperature()
-    #expect(temperature > 0)
+@Suite("Transport Layer")
+struct TransportTests {
+    @Test("Packet fragmentation")
+    func testFragmentation() async {
+        let transport = BLETransport.shared
+        let data = Data(repeating: 0xFF, count: 1000)
+
+        let packets = await transport.fragment(data)
+        #expect(packets.count > 1)
+    }
 }
 ```
+
+#### Integration Tests with Mock BLE
+
+```swift
+import Testing
+import Distributed
+@testable import Bleu
+
+@Suite("BLE System Integration")
+struct MockBLESystemTests {
+    @Test("Complete discovery to RPC flow")
+    func testCompleteFlow() async throws {
+        // Create mock systems - no TCC required
+        let peripheralSystem = BLEActorSystem.mock()
+        let centralSystem = BLEActorSystem.mock()
+
+        // Define test actor
+        distributed actor TestSensor: PeripheralActor {
+            typealias ActorSystem = BLEActorSystem
+
+            distributed func getValue() async -> Int {
+                return 42
+            }
+        }
+
+        // Setup peripheral
+        let sensor = TestSensor(actorSystem: peripheralSystem)
+        try await peripheralSystem.startAdvertising(sensor)
+
+        // Setup central to discover peripheral
+        guard let mockCentral = await centralSystem.mockCentralManager() else {
+            Issue.record("Expected mock central")
+            return
+        }
+
+        let serviceUUID = UUID.serviceUUID(for: TestSensor.self)
+        let serviceMetadata = ServiceMapper.createServiceMetadata(from: TestSensor.self)
+
+        let discovered = DiscoveredPeripheral(
+            id: sensor.id,
+            name: "TestSensor",
+            rssi: -50,
+            advertisementData: AdvertisementData(serviceUUIDs: [serviceUUID])
+        )
+
+        await mockCentral.registerPeripheral(discovered, services: [serviceMetadata])
+
+        // Test discovery and RPC
+        let sensors = try await centralSystem.discover(TestSensor.self, timeout: 1.0)
+        #expect(sensors.count == 1)
+
+        let value = try await sensors[0].getValue()
+        #expect(value == 42)
+    }
+}
+```
+
+#### Using Test Helpers
+
+Bleu provides comprehensive test utilities:
+
+```swift
+// Fast mock configurations (10ms delays)
+let system = BLEActorSystem.mock(
+    peripheralConfig: TestHelpers.fastPeripheralConfig(),
+    centralConfig: TestHelpers.fastCentralConfig()
+)
+
+// Generate test data
+let randomData = TestHelpers.randomData(size: 100)
+let deterministicData = TestHelpers.deterministicData(size: 100, pattern: 0xAB)
+
+// Create test peripherals
+let peripheral = TestHelpers.createDiscoveredPeripheral(
+    id: UUID(),
+    name: "TestDevice",
+    rssi: -50,
+    serviceUUIDs: [serviceUUID]
+)
+
+// Pre-built test actors
+let sensor = SensorActor(actorSystem: system)
+let temp = try await sensor.readTemperature() // Returns 22.5
+```
+
+#### Mock Actor Examples
+
+Pre-defined distributed actors for common testing scenarios:
+
+```swift
+// Simple value actor
+let actor = SimpleValueActor(actorSystem: system)
+let value = try await actor.getValue() // Returns 42
+
+// Stateful counter actor
+let counter = CounterActor(actorSystem: system)
+let count = try await counter.increment() // Returns 1
+
+// Error-throwing actor
+let errorActor = ErrorThrowingActor(actorSystem: system)
+try await errorActor.alwaysThrows() // Throws TestError
+```
+
+### Mock System Configuration
+
+Mocks support extensive configuration for testing various scenarios:
+
+```swift
+// Configure mock delays
+var peripheralConfig = MockPeripheralManager.Configuration()
+peripheralConfig.advertisingDelay = 0.01 // Fast for testing
+peripheralConfig.writeResponseDelay = 0.01
+
+var centralConfig = MockCentralManager.Configuration()
+centralConfig.scanDelay = 0.01
+centralConfig.connectionDelay = 0.01
+
+// Configure failure scenarios
+peripheralConfig.shouldFailAdvertising = true
+centralConfig.shouldFailConnection = true
+
+let system = BLEActorSystem.mock(
+    peripheralConfig: peripheralConfig,
+    centralConfig: centralConfig
+)
+```
+
+### Hardware Tests
+
+Hardware tests require real BLE hardware and TCC permissions. They are disabled by default:
+
+```swift
+@Suite("Real BLE Hardware Tests", .disabled("Requires real BLE hardware"))
+struct RealBLETests {
+    @Test("Real device communication")
+    func testRealDevice() async throws {
+        // Uses BLEActorSystem.shared (requires TCC)
+        let system = BLEActorSystem.shared
+        // ... test with real hardware
+    }
+}
+```
+
+To run hardware tests, remove the `.disabled` attribute and ensure your app has proper `Info.plist` with Bluetooth permissions.
+
+### CI/CD Integration
+
+GitHub Actions example:
+
+```yaml
+name: Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Run tests
+        run: swift test
+```
+
+Hardware tests are automatically skipped in CI/CD due to `.disabled` attribute.
+
+### Comprehensive Testing Guide
+
+For complete documentation including:
+- Detailed architecture explanation
+- Mock system usage patterns
+- Simulating BLE events
+- Error handling tests
+- Best practices
+- Troubleshooting guide
+
+See the **[Complete Testing Guide](docs/guides/TESTING.md)**.
 
 ## 📱 Platform Requirements
 

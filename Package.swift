@@ -22,12 +22,14 @@ let package = Package(
         ),
     ],
     dependencies: [
-        // Swift Testing is now included in Swift 6 toolchain
+        .package(url: "https://github.com/1amageek/swift-actor-runtime", branch: "main")
     ],
     targets: [
         .target(
             name: "Bleu",
-            dependencies: [],
+            dependencies: [
+                .product(name: "ActorRuntime", package: "swift-actor-runtime")
+            ],
             path: "Sources/Bleu"
         ),
         .executableTarget(
