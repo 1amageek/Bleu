@@ -6,7 +6,7 @@
   **Modern Bluetooth Low Energy Framework with Swift Distributed Actors**
   
   [![Swift 6.0](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
-  [![Platforms](https://img.shields.io/badge/Platforms-iOS%2015%2B%20|%20macOS%2012%2B%20|%20watchOS%208%2B%20|%20tvOS%2015%2B-brightgreen.svg)](https://developer.apple.com/swift/)
+  [![Platforms](https://img.shields.io/badge/Platforms-iOS%2018%2B%20|%20macOS%2015%2B%20|%20watchOS%2011%2B%20|%20tvOS%2018%2B-brightgreen.svg)](https://developer.apple.com/swift/)
   [![Swift Package Manager](https://img.shields.io/badge/SPM-Compatible-brightgreen.svg)](https://swift.org/package-manager/)
   [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 </div>
@@ -81,8 +81,15 @@ distributed actor TemperatureSensor: PeripheralActor {
 #### Peripheral Side
 
 ```swift
+// Create BLE actor system with CoreBluetooth managers
+let peripheralManager = CoreBluetoothPeripheralManager()
+let centralManager = CoreBluetoothCentralManager()
+let actorSystem = BLEActorSystem(
+    peripheralManager: peripheralManager,
+    centralManager: centralManager
+)
+
 // Create and advertise the sensor
-let actorSystem = BLEActorSystem.shared
 let sensor = TemperatureSensor(actorSystem: actorSystem)
 
 // Start advertising the sensor service
@@ -92,15 +99,22 @@ try await actorSystem.startAdvertising(sensor)
 #### Central Side
 
 ```swift
+// Create BLE actor system with CoreBluetooth managers
+let peripheralManager = CoreBluetoothPeripheralManager()
+let centralManager = CoreBluetoothCentralManager()
+let actorSystem = BLEActorSystem(
+    peripheralManager: peripheralManager,
+    centralManager: centralManager
+)
+
 // Discover and connect to sensors
-let actorSystem = BLEActorSystem.shared
 let sensors = try await actorSystem.discover(TemperatureSensor.self, timeout: 10.0)
 
 if let remoteSensor = sensors.first {
     // Call methods on the remote sensor as if it were local!
     let temperature = try await remoteSensor.getTemperature()
     print("Current temperature: \(temperature)°C")
-    
+
     // Configure the remote sensor
     try await remoteSensor.setUpdateInterval(5)
 }
@@ -185,8 +199,8 @@ do {
 - **`BLEActorSystem`**: The distributed actor system managing BLE communication
 - **`PeripheralActor`**: Protocol for actors that can be advertised as BLE peripherals
 - **`BLETransport`**: Handles packet fragmentation and reassembly
-- **`EventBridge`**: Routes BLE events to distributed actors
-- **`LocalPeripheralActor`/`LocalCentralActor`**: Core BLE operation management
+- **`ServiceMapper`**: Maps actor types to BLE service metadata
+- **Manager Protocols**: Protocol-oriented design for testability without hardware
 
 ### Communication Flow
 
@@ -303,9 +317,34 @@ import Distributed
 struct MockBLESystemTests {
     @Test("Complete discovery to RPC flow")
     func testCompleteFlow() async throws {
-        // Create mock systems - no TCC required
-        let peripheralSystem = BLEActorSystem.mock()
-        let centralSystem = BLEActorSystem.mock()
+        // Create bridge for cross-system communication
+        let bridge = MockBLEBridge()
+
+        // Create peripheral system with mock managers
+        var peripheralConfig = TestHelpers.fastPeripheralConfig()
+        peripheralConfig.bridge = bridge
+
+        let mockPeripheral1 = MockPeripheralManager(configuration: peripheralConfig)
+        let mockCentral1 = MockCentralManager()
+        let peripheralSystem = BLEActorSystem(
+            peripheralManager: mockPeripheral1,
+            centralManager: mockCentral1
+        )
+
+        // Create central system with mock managers
+        var centralConfig = TestHelpers.fastCentralConfig()
+        centralConfig.bridge = bridge
+
+        let mockPeripheral2 = MockPeripheralManager()
+        let mockCentral2 = MockCentralManager(configuration: centralConfig)
+        let centralSystem = BLEActorSystem(
+            peripheralManager: mockPeripheral2,
+            centralManager: mockCentral2
+        )
+
+        // Wait for systems to be ready
+        try await TestHelpers.waitForReady(peripheralSystem)
+        try await TestHelpers.waitForReady(centralSystem)
 
         // Define test actor
         distributed actor TestSensor: PeripheralActor {
@@ -318,25 +357,20 @@ struct MockBLESystemTests {
 
         // Setup peripheral
         let sensor = TestSensor(actorSystem: peripheralSystem)
+        await mockPeripheral1.setPeripheralID(sensor.id)
         try await peripheralSystem.startAdvertising(sensor)
 
-        // Setup central to discover peripheral
-        guard let mockCentral = await centralSystem.mockCentralManager() else {
-            Issue.record("Expected mock central")
-            return
-        }
-
+        // Register peripheral for discovery
         let serviceUUID = UUID.serviceUUID(for: TestSensor.self)
         let serviceMetadata = ServiceMapper.createServiceMetadata(from: TestSensor.self)
 
-        let discovered = DiscoveredPeripheral(
+        let discovered = TestHelpers.createDiscoveredPeripheral(
             id: sensor.id,
             name: "TestSensor",
-            rssi: -50,
-            advertisementData: AdvertisementData(serviceUUIDs: [serviceUUID])
+            serviceUUIDs: [serviceUUID]
         )
 
-        await mockCentral.registerPeripheral(discovered, services: [serviceMetadata])
+        await mockCentral2.registerPeripheral(discovered, services: [serviceMetadata])
 
         // Test discovery and RPC
         let sensors = try await centralSystem.discover(TestSensor.self, timeout: 1.0)
@@ -354,9 +388,14 @@ Bleu provides comprehensive test utilities:
 
 ```swift
 // Fast mock configurations (10ms delays)
-let system = BLEActorSystem.mock(
-    peripheralConfig: TestHelpers.fastPeripheralConfig(),
-    centralConfig: TestHelpers.fastCentralConfig()
+let peripheralConfig = TestHelpers.fastPeripheralConfig()
+let centralConfig = TestHelpers.fastCentralConfig()
+
+let mockPeripheral = MockPeripheralManager(configuration: peripheralConfig)
+let mockCentral = MockCentralManager(configuration: centralConfig)
+let system = BLEActorSystem(
+    peripheralManager: mockPeripheral,
+    centralManager: mockCentral
 )
 
 // Generate test data
@@ -412,9 +451,11 @@ centralConfig.connectionDelay = 0.01
 peripheralConfig.shouldFailAdvertising = true
 centralConfig.shouldFailConnection = true
 
-let system = BLEActorSystem.mock(
-    peripheralConfig: peripheralConfig,
-    centralConfig: centralConfig
+let mockPeripheral = MockPeripheralManager(configuration: peripheralConfig)
+let mockCentral = MockCentralManager(configuration: centralConfig)
+let system = BLEActorSystem(
+    peripheralManager: mockPeripheral,
+    centralManager: mockCentral
 )
 ```
 
@@ -427,8 +468,13 @@ Hardware tests require real BLE hardware and TCC permissions. They are disabled 
 struct RealBLETests {
     @Test("Real device communication")
     func testRealDevice() async throws {
-        // Uses BLEActorSystem.shared (requires TCC)
-        let system = BLEActorSystem.shared
+        // Create system with real CoreBluetooth managers (requires TCC)
+        let peripheralManager = CoreBluetoothPeripheralManager()
+        let centralManager = CoreBluetoothCentralManager()
+        let system = BLEActorSystem(
+            peripheralManager: peripheralManager,
+            centralManager: centralManager
+        )
         // ... test with real hardware
     }
 }
@@ -470,9 +516,9 @@ See the **[Complete Testing Guide](docs/guides/TESTING.md)**.
 
 ## 📱 Platform Requirements
 
-- **iOS 15.0+** / **macOS 12.0+** / **watchOS 8.0+** / **tvOS 15.0+**
+- **iOS 18.0+** / **macOS 15.0+** / **watchOS 11.0+** / **tvOS 18.0+**
 - **Swift 6.0+**
-- **Xcode 15.0+**
+- **Xcode 16.0+**
 
 ## 🗺️ Roadmap
 
