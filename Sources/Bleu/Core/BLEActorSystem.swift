@@ -152,7 +152,7 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
             // Update central manager state in bootstrap
             await bootstrap.updateCentralState(state)
 
-        case .characteristicValueUpdated(let peripheralID, let serviceUUID, let characteristicUUID, let data):
+        case .characteristicValueUpdated(_, _, _, let data):
             // This is a response to an RPC call we made
             guard let data = data else { return }
             do {
@@ -208,7 +208,7 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
 
                 // Pack response with BLETransport for transmission
                 let packets = await transport.fragment(responseData)
-                for (index, packet) in packets.enumerated() {
+                for packet in packets {
                     let packedData = await transport.packPacket(packet)
                     // Send response back via notification to the specific central
                     _ = try await peripheralManager.updateValue(packedData, for: characteristicUUID, to: [central])
