@@ -16,9 +16,20 @@
 
 ## Overview
 
-Bleu 2 is a revolutionary Bluetooth Low Energy framework that leverages **Swift's Distributed Actor System** to create seamless, type-safe communication between BLE devices. It transforms complex BLE operations into simple, intuitive actor method calls.
+Bleu 2 is a revolutionary Bluetooth Low Energy framework that leverages **Swift's Distributed Actor System** and **`@Resolvable` protocols** to create seamless, type-safe communication between BLE devices.
+
+**Define a protocol, implement it, and call methods over BLE—it's that simple.**
+
+No complex BLE APIs. No manual serialization. No boilerplate code. Just define your distributed actor protocol with `@Resolvable`, and Bleu handles everything else automatically.
 
 ## ✨ Key Features
+
+### 🎯 **Protocol-Oriented BLE with @Resolvable**
+- **Define a protocol** with distributed methods
+- **Implement on peripheral** as a distributed actor
+- **Resolve on central** using auto-generated stubs
+- **Call methods over BLE** as if they were local
+- Zero boilerplate, maximum simplicity
 
 ### 🎭 **Distributed Actor Architecture**
 - Transparent RPC over BLE using Swift's native distributed actors
@@ -56,9 +67,51 @@ dependencies: [
 ]
 ```
 
-### Basic Usage
+### The Simplest Way: Using @Resolvable
 
-#### Define Your Distributed Actor
+```swift
+import Bleu
+import Distributed
+
+// 1. Define your BLE device API as a protocol
+@Resolvable
+protocol TemperatureSensor: PeripheralActor {
+    distributed func getTemperature() async throws -> Double
+    distributed func setUpdateInterval(_ seconds: Int) async throws
+}
+
+// 2. Peripheral: Implement the protocol
+distributed actor MyThermometer: TemperatureSensor {
+    typealias ActorSystem = BLEActorSystem
+
+    distributed func getTemperature() async throws -> Double {
+        return 25.5  // Read from actual sensor
+    }
+
+    distributed func setUpdateInterval(_ seconds: Int) async throws {
+        // Configure update rate
+    }
+}
+
+// 3. Central: Resolve and call methods over BLE
+let actorSystem = BLEActorSystem(
+    peripheralManager: CoreBluetoothPeripheralManager(),
+    centralManager: CoreBluetoothCentralManager()
+)
+
+// Discover the sensor
+let sensors = try await actorSystem.discover(MyThermometer.self, timeout: 10.0)
+
+// Resolve using the protocol (works even if you only know the ID!)
+let sensor = try $TemperatureSensor.resolve(id: sensors[0].id, using: actorSystem)
+
+// Call methods as if the sensor were local
+let temp = try await sensor.getTemperature()  // 🎉 That's it!
+```
+
+### Traditional Approach: Concrete Actor Types
+
+You can also define distributed actors directly without protocols:
 
 ```swift
 import Bleu
@@ -67,12 +120,12 @@ import Distributed
 // Define a distributed actor that runs on a BLE peripheral
 distributed actor TemperatureSensor: PeripheralActor {
     typealias ActorSystem = BLEActorSystem
-    
+
     distributed func getTemperature() async throws -> Double {
         // Read from actual sensor hardware
         return 25.5
     }
-    
+
     distributed func setUpdateInterval(_ seconds: Int) async throws {
         // Configure sensor update rate
     }
@@ -122,6 +175,113 @@ if let remoteSensor = sensors.first {
 ```
 
 ## 🎯 Advanced Features
+
+### Protocol-Based Actor Resolution with @Resolvable
+
+Bleu 2 leverages Swift's `@Resolvable` macro ([SE-0428](https://github.com/swiftlang/swift-evolution/blob/main/proposals/0428-resolve-distributed-actor-protocols.md)) to enable protocol-oriented distributed actor design. You can define your own protocols with distributed methods and use the compiler-generated stubs to resolve remote actors without knowing their concrete implementations.
+
+#### Why Use @Resolvable?
+
+- **Protocol-First API Design**: Define your BLE device APIs as protocols
+- **Implementation Flexibility**: Peripheral implementations remain private
+- **Type-Safe Resolution**: Resolve actors by ID using protocol types
+- **Module Separation**: Share protocol definitions across app modules
+- **Easy Testing**: Mock protocol implementations for unit tests
+
+#### Define Your Own Protocol
+
+**Important**: Add `@Resolvable` to **your custom protocols**, not to the base `PeripheralActor` protocol. The `PeripheralActor` protocol is a marker protocol without distributed methods.
+
+```swift
+// Step 1: Define a custom protocol with @Resolvable and distributed methods
+@Resolvable
+protocol TemperatureSensor: PeripheralActor {
+    distributed func getTemperature() async throws -> Double
+    distributed func setTemperatureUnit(_ unit: String) async throws
+}
+
+// Step 2: Peripheral side - Implement the protocol
+distributed actor IndoorSensor: TemperatureSensor {
+    typealias ActorSystem = BLEActorSystem
+
+    private var unit = "celsius"
+
+    distributed func getTemperature() async throws -> Double {
+        return unit == "celsius" ? 25.5 : 77.9
+    }
+
+    distributed func setTemperatureUnit(_ unit: String) async throws {
+        self.unit = unit
+    }
+}
+
+// Step 3: Central side - Work with the protocol, not the concrete type
+let actorSystem = BLEActorSystem(
+    peripheralManager: CoreBluetoothPeripheralManager(),
+    centralManager: CoreBluetoothCentralManager()
+)
+
+// Option 1: Discover sensors using concrete type
+let sensors = try await actorSystem.discover(IndoorSensor.self, timeout: 10.0)
+if let sensor = sensors.first {
+    let temp = try await sensor.getTemperature()
+}
+
+// Option 2: Resolve by ID using @Resolvable-generated stub
+// The @Resolvable macro generates a $TemperatureSensor type automatically
+let knownSensorID = UUID(/* saved sensor ID */)
+let sensor = try $TemperatureSensor.resolve(id: knownSensorID, using: actorSystem)
+
+// Call methods defined in the protocol
+try await sensor.setTemperatureUnit("fahrenheit")
+let temp = try await sensor.getTemperature()
+
+// Pass around as protocol type - no concrete type needed!
+func monitorTemperature(_ sensor: any TemperatureSensor) async throws {
+    let temp = try await sensor.getTemperature()
+    print("Current temperature: \(temp)")
+}
+try await monitorTemperature(sensor)
+```
+
+#### Use Cases
+
+```swift
+// Example: Multiple sensor types with same protocol
+@Resolvable
+protocol EnvironmentSensor: PeripheralActor {
+    distributed func readValue() async throws -> Double
+    distributed func calibrate() async throws
+}
+
+distributed actor TemperatureSensor: EnvironmentSensor { /* ... */ }
+distributed actor HumiditySensor: EnvironmentSensor { /* ... */ }
+distributed actor PressureSensor: EnvironmentSensor { /* ... */ }
+
+// Central can work with all sensors uniformly
+func readAllSensors(_ sensors: [any EnvironmentSensor]) async throws -> [Double] {
+    try await withThrowingTaskGroup(of: Double.self) { group in
+        for sensor in sensors {
+            group.addTask { try await sensor.readValue() }
+        }
+
+        var values: [Double] = []
+        for try await value in group {
+            values.append(value)
+        }
+        return values
+    }
+}
+```
+
+#### Key Benefits
+
+- **Protocol-First Design**: Define your device APIs as protocols with distributed methods
+- **Automatic Stub Generation**: Swift compiler generates `$ProtocolName` types for resolution
+- **Location Transparency**: Work with protocol types without knowing concrete implementations
+- **Module Separation**: Share protocol definitions across modules, keep implementations private
+- **Type Safety**: Full compiler verification of distributed method calls
+- **Flexible Resolution**: Resolve actors by ID without discovery process
 
 ### Custom Service Metadata
 

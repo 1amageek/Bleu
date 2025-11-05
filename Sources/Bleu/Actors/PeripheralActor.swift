@@ -2,6 +2,8 @@ import Foundation
 import Distributed
 
 /// Protocol for all BLE peripheral actors
+/// This is a base marker protocol. For RPC functionality, define your own protocol
+/// with @Resolvable and distributed methods.
 public protocol PeripheralActor: DistributedActor where ActorSystem == BLEActorSystem {
     // DistributedActor already provides nonisolated let id: ID (which is BLEActorSystem.ActorID)
     // No need to redefine id here
