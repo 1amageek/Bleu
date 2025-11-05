@@ -493,9 +493,9 @@ on: [push, pull_request]
 
 jobs:
   test:
-    runs-on: macos-latest
+    runs-on: macos-26
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Run tests
         run: swift test
 ```
@@ -520,13 +520,6 @@ See the **[Complete Testing Guide](docs/guides/TESTING.md)**.
 - **Swift 6.0+**
 - **Xcode 16.0+**
 
-## 🗺️ Roadmap
-
-- [ ] Enhanced security with encryption
-- [ ] Improved connection management
-- [ ] Background mode support
-- [ ] Performance optimizations
-
 ## 📚 Documentation
 
 Comprehensive documentation is available in the `docs/` directory:
@@ -539,17 +532,9 @@ For contributors and maintainers:
 - **[Repository Guidelines](docs/internal/REPOSITORY_GUIDELINES.md)** - Project structure, coding standards, and development workflow
 - **[Claude Code Guide](docs/internal/CLAUDE.md)** - AI assistant integration guide
 
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
-
 ## 📄 License
 
 Bleu is available under the MIT license. See the [LICENSE](LICENSE) file for more info.
-
-## 🙏 Acknowledgments
-
-Special thanks to the Swift community and all contributors who have helped shape Bleu 2.
 
 ---
 
