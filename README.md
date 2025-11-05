@@ -8,6 +8,7 @@
   [![Swift 6.0](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
   [![Platforms](https://img.shields.io/badge/Platforms-iOS%2018%2B%20|%20macOS%2015%2B%20|%20watchOS%2011%2B%20|%20tvOS%2018%2B-brightgreen.svg)](https://developer.apple.com/swift/)
   [![Swift Package Manager](https://img.shields.io/badge/SPM-Compatible-brightgreen.svg)](https://swift.org/package-manager/)
+  [![Test](https://github.com/1amageek/Bleu/actions/workflows/test.yml/badge.svg)](https://github.com/1amageek/Bleu/actions/workflows/test.yml)
   [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 </div>
 
