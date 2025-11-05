@@ -1,27 +1,33 @@
 import Foundation
 import CoreBluetooth
 
-/// A singleton that simulates the BLE radio, allowing mock peripherals and centrals
+/// Simulates the BLE radio, allowing mock peripherals and centrals
 /// in different actor systems to communicate with each other.
 ///
-/// This bridge acts as a shared communication channel that routes characteristic
+/// This bridge acts as a communication channel that routes characteristic
 /// writes from centrals to peripherals and notifications from peripherals to centrals.
 ///
 /// Usage:
 /// ```swift
+/// // Create a shared bridge instance for the test
+/// let bridge = MockBLEBridge()
+///
 /// // Peripheral system
-/// let peripheralSystem = BLEActorSystem(...)
-/// let bridge = MockBLEBridge.shared
+/// var peripheralConfig = MockPeripheralManager.Configuration()
+/// peripheralConfig.bridge = bridge
+/// let peripheralSystem = BLEActorSystem(peripheralManager: MockPeripheralManager(configuration: peripheralConfig), ...)
 ///
-/// // Central system
-/// let centralSystem = BLEActorSystem(...)
+/// // Central system (sharing the same bridge)
+/// var centralConfig = MockCentralManager.Configuration()
+/// centralConfig.bridge = bridge
+/// let centralSystem = BLEActorSystem(centralManager: MockCentralManager(configuration: centralConfig), ...)
 ///
-/// // The bridge automatically routes communication between them
+/// // The bridge routes communication between them
 /// ```
 public actor MockBLEBridge {
 
-    /// Shared instance
-    public static let shared = MockBLEBridge()
+    /// Public initializer for creating bridge instances
+    public init() {}
 
     // MARK: - Types
 

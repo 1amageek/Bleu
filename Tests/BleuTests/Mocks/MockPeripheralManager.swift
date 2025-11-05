@@ -41,10 +41,22 @@ public actor MockPeripheralManager: BLEPeripheralManagerProtocol {
         /// Delay before responding to writes
         public var writeResponseDelay: TimeInterval = 0
 
-        /// Enable cross-system communication via MockBLEBridge
-        /// When true, this manager will use MockBLEBridge.shared to communicate
+        /// Optional bridge instance for cross-system communication
+        /// When set, this manager will use the provided bridge to communicate
         /// with other systems' mock managers
-        public var useBridge: Bool = false
+        public var bridge: MockBLEBridge? = nil
+
+        /// Convenience property for backward compatibility
+        public var useBridge: Bool {
+            get { bridge != nil }
+            set {
+                if newValue && bridge == nil {
+                    fatalError("useBridge=true requires setting a bridge instance. Use config.bridge = MockBLEBridge() instead.")
+                } else if !newValue {
+                    bridge = nil
+                }
+            }
+        }
 
         public init() {}
     }
@@ -106,9 +118,9 @@ public actor MockPeripheralManager: BLEPeripheralManagerProtocol {
         }
 
         // Register with bridge if enabled
-        if config.useBridge, let peripheralID = peripheralID {
+        if config.useBridge, let peripheralID = peripheralID, let bridge = config.bridge {
             for char in service.characteristics {
-                await MockBLEBridge.shared.registerPeripheral(
+                await bridge.registerPeripheral(
                     peripheralID,
                     serviceUUID: service.uuid,
                     characteristicUUID: char.uuid,
@@ -180,9 +192,9 @@ public actor MockPeripheralManager: BLEPeripheralManagerProtocol {
 
         characteristicValues[characteristicUUID] = data
 
-        if config.useBridge, let peripheralID = peripheralID {
+        if config.useBridge, let peripheralID = peripheralID, let bridge = config.bridge {
             // Use bridge for cross-system communication
-            await MockBLEBridge.shared.peripheralNotify(
+            await bridge.peripheralNotify(
                 from: peripheralID,
                 characteristicUUID: characteristicUUID,
                 value: data

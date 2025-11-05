@@ -1,10 +1,10 @@
 import Foundation
-import os
+import Logging
 
-/// Logger for Bleu framework
+/// Logger for Bleu framework using swift-log
 public struct BleuLogger {
     private static let subsystem = "com.bleu.framework"
-    
+
     /// Logger categories
     public enum Category: String {
         case transport = "Transport"
@@ -14,12 +14,14 @@ public struct BleuLogger {
         case rpc = "RPC"
         case connection = "Connection"
     }
-    
+
     /// Create a logger for a specific category
     public static func logger(for category: Category) -> Logger {
-        Logger(subsystem: subsystem, category: category.rawValue)
+        var logger = Logger(label: "\(subsystem).\(category.rawValue)")
+        logger.logLevel = .info  // Default log level
+        return logger
     }
-    
+
     // Convenience static loggers
     public static let transport = logger(for: .transport)
     public static let actorSystem = logger(for: .actorSystem)

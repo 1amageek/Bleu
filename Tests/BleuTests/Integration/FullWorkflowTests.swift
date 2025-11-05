@@ -11,15 +11,15 @@ struct FullWorkflowTests {
 
     @Test("Complete discovery to RPC flow")
     func testCompleteFlow() async throws {
-        // Reset bridge
-        await MockBLEBridge.shared.reset()
+        // Create bridge instance for this test
+        let bridge = MockBLEBridge()
 
         // Create separate systems with bridge enabled
         var peripheralConfig = TestHelpers.fastPeripheralConfig()
-        peripheralConfig.useBridge = true
+        peripheralConfig.bridge = bridge
 
         var centralConfig = TestHelpers.fastCentralConfig()
-        centralConfig.useBridge = true
+        centralConfig.bridge = bridge
 
         let mockPeripheral1 = MockPeripheralManager(configuration: peripheralConfig)
         let mockCentral1 = MockCentralManager(configuration: centralConfig)
@@ -78,63 +78,47 @@ struct FullWorkflowTests {
 
     @Test("Discover multiple peripherals")
     func testMultiplePeripherals() async throws {
-        // Reset bridge
-        await MockBLEBridge.shared.reset()
+        // This test verifies multiple actors in the same system
+        // No bridge needed - all actors are in the same process
+        let peripheralConfig = TestHelpers.fastPeripheralConfig()
+        let centralConfig = TestHelpers.fastCentralConfig()
 
-        // Configure with bridge
-        var peripheralConfig = TestHelpers.fastPeripheralConfig()
-        peripheralConfig.useBridge = true
-
-        var centralConfig = TestHelpers.fastCentralConfig()
-        centralConfig.useBridge = true
-
-        let mockPeripheral1 = MockPeripheralManager(configuration: peripheralConfig)
-        let mockCentral1 = MockCentralManager(configuration: centralConfig)
-        let peripheralSystem = BLEActorSystem(
-            peripheralManager: mockPeripheral1,
-            centralManager: mockCentral1
+        let mockPeripheral = MockPeripheralManager(configuration: peripheralConfig)
+        let mockCentral = MockCentralManager(configuration: centralConfig)
+        let system = BLEActorSystem(
+            peripheralManager: mockPeripheral,
+            centralManager: mockCentral
         )
 
-        let mockPeripheral2 = MockPeripheralManager(configuration: peripheralConfig)
-        let mockCentral2 = MockCentralManager(configuration: centralConfig)
-        let centralSystem = BLEActorSystem(
-            peripheralManager: mockPeripheral2,
-            centralManager: mockCentral2
-        )
+        // Wait for system to be ready
+        try await TestHelpers.waitForReady(system)
 
-        // Wait for systems to be ready
-        try await TestHelpers.waitForReady(peripheralSystem)
-        try await TestHelpers.waitForReady(centralSystem)
+        // Create multiple sensors in the same system
+        let sensor1 = SensorActor(actorSystem: system)
+        let sensor2 = SensorActor(actorSystem: system)
+        let sensor3 = SensorActor(actorSystem: system)
 
-        // Create multiple sensors
-        let sensor1 = SensorActor(actorSystem: peripheralSystem)
-        let sensor2 = SensorActor(actorSystem: peripheralSystem)
-        let sensor3 = SensorActor(actorSystem: peripheralSystem)
+        // No need to set peripheral IDs - same process communication
 
-        // Set peripheral IDs for bridge routing
-        await mockPeripheral1.setPeripheralID(sensor1.id)
-        await mockPeripheral1.setPeripheralID(sensor2.id)
-        await mockPeripheral1.setPeripheralID(sensor3.id)
-
-        try await peripheralSystem.startAdvertising(sensor1)
-        try await peripheralSystem.startAdvertising(sensor2)
-        try await peripheralSystem.startAdvertising(sensor3)
+        try await system.startAdvertising(sensor1)
+        try await system.startAdvertising(sensor2)
+        try await system.startAdvertising(sensor3)
 
         let serviceUUID = UUID.serviceUUID(for: SensorActor.self)
         let serviceMetadata = ServiceMapper.createServiceMetadata(from: SensorActor.self)
 
-        // Register all three peripherals
+        // Register all three peripherals for discovery
         for sensor in [sensor1, sensor2, sensor3] {
             let discovered = TestHelpers.createDiscoveredPeripheral(
                 id: sensor.id,
                 name: "Sensor-\(sensor.id)",
                 serviceUUIDs: [serviceUUID]
             )
-            await mockCentral2.registerPeripheral(discovered, services: [serviceMetadata])
+            await mockCentral.registerPeripheral(discovered, services: [serviceMetadata])
         }
 
         // Discover all sensors
-        let sensors = try await centralSystem.discover(SensorActor.self, timeout: 1.0)
+        let sensors = try await system.discover(SensorActor.self, timeout: 1.0)
         #expect(sensors.count == 3)
 
         // Verify all sensors work
@@ -148,13 +132,13 @@ struct FullWorkflowTests {
 
     @Test("Stateful counter interactions")
     func testStatefulCounter() async throws {
-        await MockBLEBridge.shared.reset()
+        let bridge = MockBLEBridge()
 
         var peripheralConfig = MockPeripheralManager.Configuration()
-        peripheralConfig.useBridge = true
+        peripheralConfig.bridge = bridge
 
         var centralConfig = MockCentralManager.Configuration()
-        centralConfig.useBridge = true
+        centralConfig.bridge = bridge
 
         let mockPeripheral1 = MockPeripheralManager(configuration: peripheralConfig)
         let mockCentral1 = MockCentralManager(configuration: centralConfig)
@@ -286,13 +270,13 @@ struct FullWorkflowTests {
 
     @Test("Complex data structures over RPC")
     func testComplexDataTransfer() async throws {
-        await MockBLEBridge.shared.reset()
+        let bridge = MockBLEBridge()
 
         var peripheralConfig = MockPeripheralManager.Configuration()
-        peripheralConfig.useBridge = true
+        peripheralConfig.bridge = bridge
 
         var centralConfig = MockCentralManager.Configuration()
-        centralConfig.useBridge = true
+        centralConfig.bridge = bridge
 
         let mockPeripheral1 = MockPeripheralManager(configuration: peripheralConfig)
         let mockCentral1 = MockCentralManager(configuration: centralConfig)
@@ -343,13 +327,13 @@ struct FullWorkflowTests {
 
     @Test("Concurrent RPC calls")
     func testConcurrentRPCCalls() async throws {
-        await MockBLEBridge.shared.reset()
+        let bridge = MockBLEBridge()
 
         var peripheralConfig = MockPeripheralManager.Configuration()
-        peripheralConfig.useBridge = true
+        peripheralConfig.bridge = bridge
 
         var centralConfig = MockCentralManager.Configuration()
-        centralConfig.useBridge = true
+        centralConfig.bridge = bridge
 
         let mockPeripheral1 = MockPeripheralManager(configuration: peripheralConfig)
         let mockCentral1 = MockCentralManager(configuration: centralConfig)

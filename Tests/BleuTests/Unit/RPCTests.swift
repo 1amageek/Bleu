@@ -71,9 +71,6 @@ struct RPCTests {
         // Use mock system - no TCC required
         let system = await BLEActorSystem.mock()
 
-        // Register the actor in instance registry
-        let instanceRegistry = InstanceRegistry.shared
-
         // Create a dummy distributed actor for testing
         distributed actor TestActor: PeripheralActor {
             typealias ActorSystem = BLEActorSystem
@@ -88,8 +85,9 @@ struct RPCTests {
         }
 
         let testActor = TestActor(actorSystem: system)
-        let actorID = testActor.id
-        await instanceRegistry.registerLocal(testActor)
+
+        // Actor is automatically registered in ActorRegistry via actorReady()
+        // No manual registration needed
 
         // Test calling distributed methods
         let result1 = try await testActor.testMethod()
@@ -98,7 +96,6 @@ struct RPCTests {
         let result2 = try await testActor.addNumbers(5, 3)
         #expect(result2 == 8)
 
-        // Clean up
-        await instanceRegistry.unregister(actorID)
+        // Actor is automatically unregistered when it deinitializes
     }
 }

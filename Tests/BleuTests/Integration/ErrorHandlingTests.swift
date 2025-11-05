@@ -233,7 +233,10 @@ struct ErrorHandlingTests {
             centralManager: mockCentral
         )
 
-        // Create actor and try to advertise when system is configured to fail
+        // Wait for system to be ready (Bluetooth powered on)
+        try await TestHelpers.waitForReady(system)
+
+        // Create actor and try to advertise when mock is configured to fail
         let sensor = SensorActor(actorSystem: system)
 
         do {
@@ -254,15 +257,15 @@ struct ErrorHandlingTests {
 
     @Test("Distributed actor method throws error")
     func testActorMethodThrows() async throws {
-        // Reset bridge before test
-        await MockBLEBridge.shared.reset()
+        // Create bridge instance for this test
+        let bridge = MockBLEBridge()
 
         // Configure managers to use bridge for cross-system communication
         var peripheralConfig = MockPeripheralManager.Configuration()
-        peripheralConfig.useBridge = true
+        peripheralConfig.bridge = bridge
 
         var centralConfig = MockCentralManager.Configuration()
-        centralConfig.useBridge = true
+        centralConfig.bridge = bridge
 
         // Peripheral system
         let mockPeripheral1 = MockPeripheralManager(configuration: peripheralConfig)
@@ -319,15 +322,15 @@ struct ErrorHandlingTests {
 
     @Test("Conditional error throwing")
     func testConditionalError() async throws {
-        // Reset bridge before test
-        await MockBLEBridge.shared.reset()
+        // Create bridge instance for this test
+        let bridge = MockBLEBridge()
 
         // Configure managers to use bridge
         var peripheralConfig = MockPeripheralManager.Configuration()
-        peripheralConfig.useBridge = true
+        peripheralConfig.bridge = bridge
 
         var centralConfig = MockCentralManager.Configuration()
-        centralConfig.useBridge = true
+        centralConfig.bridge = bridge
 
         // Peripheral system
         let mockPeripheral1 = MockPeripheralManager(configuration: peripheralConfig)

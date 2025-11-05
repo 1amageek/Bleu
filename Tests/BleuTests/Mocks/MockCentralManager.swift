@@ -31,10 +31,22 @@ public actor MockCentralManager: BLECentralManagerProtocol {
         public var shouldFailConnection: Bool = false
         public var connectionTimeout: Bool = false
 
-        /// Enable cross-system communication via MockBLEBridge
-        /// When true, this manager will use MockBLEBridge.shared to communicate
+        /// Optional bridge instance for cross-system communication
+        /// When set, this manager will use the provided bridge to communicate
         /// with other systems' mock managers
-        public var useBridge: Bool = false
+        public var bridge: MockBLEBridge? = nil
+
+        /// Convenience property for backward compatibility
+        public var useBridge: Bool {
+            get { bridge != nil }
+            set {
+                if newValue && bridge == nil {
+                    fatalError("useBridge=true requires setting a bridge instance. Use config.bridge = MockBLEBridge() instead.")
+                } else if !newValue {
+                    bridge = nil
+                }
+            }
+        }
 
         public init() {}
     }
@@ -228,8 +240,8 @@ public actor MockCentralManager: BLECentralManagerProtocol {
         characteristicValues[peripheralID]?[characteristicUUID] = data
 
         // Forward to bridge if enabled
-        if config.useBridge {
-            try await MockBLEBridge.shared.centralWrite(
+        if config.useBridge, let bridge = config.bridge {
+            try await bridge.centralWrite(
                 from: UUID(),  // central ID - could be tracked if needed
                 to: peripheralID,
                 characteristicUUID: characteristicUUID,
@@ -254,8 +266,8 @@ public actor MockCentralManager: BLECentralManagerProtocol {
             notifyingCharacteristics[peripheralID]?.insert(characteristicUUID)
 
             // Register with bridge to receive notifications
-            if config.useBridge {
-                await MockBLEBridge.shared.registerCentral(
+            if config.useBridge, let bridge = config.bridge {
+                await bridge.registerCentral(
                     UUID(),  // central ID
                     for: peripheralID,
                     characteristicUUID: characteristicUUID,

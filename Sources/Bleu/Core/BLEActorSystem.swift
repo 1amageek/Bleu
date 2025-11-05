@@ -33,7 +33,6 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
     public typealias SerializationRequirement = Codable
     
     // Core components
-    private let instanceRegistry = InstanceRegistry.shared
     private let registry = ActorRegistry()  // Actor registry for distributed actors
 
     // BLE manager protocol instances (can be production or mock)
@@ -81,7 +80,7 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         func cancelAllPendingCalls(for peripheralID: UUID, error: Error) {
             // Cancel all pending calls - we don't track by peripheral currently
             // This is a limitation that could be improved
-            for (callID, continuation) in pendingCalls {
+            for (_, continuation) in pendingCalls {
                 continuation.resume(throwing: error)
             }
             pendingCalls.removeAll()
@@ -163,7 +162,6 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
                     BleuLogger.actorSystem.warning("Failed to reassemble response packet - may need more fragments")
                     return
                 }
-
                 let responseEnvelope = try JSONDecoder().decode(ResponseEnvelope.self, from: unpackedData)
                 // Resume the pending call with the response data
                 await proxyManager.resumePendingCall(responseEnvelope.callID, with: .success(unpackedData))
@@ -190,9 +188,10 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
             // Update peripheral manager state in bootstrap
             await bootstrap.updatePeripheralState(state)
 
-        case .writeRequestReceived(let central, let serviceUUID, let characteristicUUID, let data):
+        case .writeRequestReceived(let central, _, let characteristicUUID, let data):
             // This is an incoming RPC request
             do {
+
                 // Unpack BLETransport packet if needed (could be fragmented)
                 let transport = BLETransport.shared
 
@@ -209,7 +208,7 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
 
                 // Pack response with BLETransport for transmission
                 let packets = await transport.fragment(responseData)
-                for packet in packets {
+                for (index, packet) in packets.enumerated() {
                     let packedData = await transport.packPacket(packet)
                     // Send response back via notification to the specific central
                     _ = try await peripheralManager.updateValue(packedData, for: characteristicUUID, to: [central])
@@ -292,16 +291,12 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
     public func actorReady<Act>(_ actor: Act)
         where Act: DistributedActor, Act.ID == ActorID {
         registry.register(actor, id: actor.id.uuidString)
-        Task {
-            await instanceRegistry.registerLocal(actor)
-        }
     }
 
     public func resignID(_ id: ActorID) {
         registry.unregister(id: id.uuidString)
         Task {
             await proxyManager.remove(id)
-            await instanceRegistry.unregister(id)
         }
     }
     
@@ -433,7 +428,12 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         case .success(let data):
             return try JSONDecoder().decode(Res.self, from: data)
         case .void:
-            return () as! Res
+            // Handle VoidResult specifically for void-returning methods
+            if Res.self == VoidResult.self {
+                return VoidResult() as! Res
+            } else {
+                return () as! Res
+            }
         case .failure(let error):
             throw convertRuntimeError(error)
         }
@@ -479,17 +479,9 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
     /// Handle an incoming RPC invocation (called by LocalPeripheralActor)
     public func handleIncomingRPC(_ envelope: InvocationEnvelope) async -> ResponseEnvelope {
         do {
-            // Get the target actor from registry
-            let instanceRegistry = InstanceRegistry.shared
 
-            // Parse actorID from recipientID (convert String back to UUID)
-            guard let actorID = UUID(uuidString: envelope.recipientID) else {
-                let error = RuntimeError.invalidEnvelope("Invalid recipient ID: \(envelope.recipientID)")
-                return ResponseEnvelope(callID: envelope.callID, result: .failure(error))
-            }
-
-            // Get the local actor instance
-            guard let actor = await instanceRegistry.find(actorID) else {
+            // Get the local actor instance from ActorRegistry (not InstanceRegistry actor)
+            guard let actor = registry.find(id: envelope.recipientID) else {
                 let error = RuntimeError.actorNotFound(envelope.recipientID)
                 return ResponseEnvelope(callID: envelope.callID, result: .failure(error))
             }
@@ -617,9 +609,6 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
                 // Create remote actor reference
                 let actor = try T.resolve(id: discovered.id, using: self)
 
-                // Register the remote actor in the instance registry
-                await instanceRegistry.registerRemote(actor, peripheralID: discovered.id)
-
                 // Add to results
                 discoveredActors.append(actor)
 
@@ -681,9 +670,6 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
 
         // Create remote actor reference
         let actor = try T.resolve(id: peripheralID, using: self)
-
-        // Register the remote actor in the instance registry
-        await instanceRegistry.registerRemote(actor, peripheralID: peripheralID)
 
         return actor
     }
@@ -853,9 +839,10 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
     }
 }
 
-// MARK: - Supporting Types
+/// MARK: - Supporting Types
 
-private struct VoidResult: Codable {}
+/// Internal type representing void/unit result for distributed actor calls
+internal struct VoidResult: Codable {}
 
 private struct PeripheralActorProxy {
     let id: UUID
