@@ -526,7 +526,6 @@ See the **[Complete Testing Guide](docs/guides/TESTING.md)**.
 - [ ] Improved connection management
 - [ ] Background mode support
 - [ ] Performance optimizations
-- [ ] Additional platform support
 
 ## 📚 Documentation
 
