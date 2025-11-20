@@ -34,7 +34,7 @@ struct MockActorSystemTests {
         // Create mocks explicitly
         let mockPeripheral = MockPeripheralManager()
         let mockCentral = MockCentralManager()
-        let system = BLEActorSystem(
+        let _ = BLEActorSystem(
             peripheralManager: mockPeripheral,
             centralManager: mockCentral
         )
@@ -77,14 +77,14 @@ struct MockActorSystemTests {
     func testMockCentralScanAndConnect() async throws {
         let mockPeripheral1 = MockPeripheralManager()
         let mockCentral1 = MockCentralManager()
-        let peripheralSystem = BLEActorSystem(
+        _ = BLEActorSystem(
             peripheralManager: mockPeripheral1,
             centralManager: mockCentral1
         )
 
         let mockPeripheral2 = MockPeripheralManager()
         let mockCentral2 = MockCentralManager()
-        let centralSystem = BLEActorSystem(
+        _ = BLEActorSystem(
             peripheralManager: mockPeripheral2,
             centralManager: mockCentral2
         )
@@ -141,7 +141,7 @@ struct MockActorSystemTests {
     func testMockCharacteristicUpdates() async throws {
         let mockPeripheral = MockPeripheralManager()
         let mockCentral = MockCentralManager()
-        let system = BLEActorSystem(
+        _ = BLEActorSystem(
             peripheralManager: mockPeripheral,
             centralManager: mockCentral
         )
@@ -188,7 +188,7 @@ struct MockActorSystemTests {
     func testMockServiceDiscovery() async throws {
         let mockPeripheral = MockPeripheralManager()
         let mockCentral = MockCentralManager()
-        let system = BLEActorSystem(
+        _ = BLEActorSystem(
             peripheralManager: mockPeripheral,
             centralManager: mockCentral
         )
@@ -249,7 +249,7 @@ struct MockActorSystemTests {
     func testMockReadWrite() async throws {
         let mockPeripheral = MockPeripheralManager()
         let mockCentral = MockCentralManager()
-        let system = BLEActorSystem(
+        _ = BLEActorSystem(
             peripheralManager: mockPeripheral,
             centralManager: mockCentral
         )
@@ -306,7 +306,7 @@ struct MockActorSystemTests {
 
         let mockPeripheral = MockPeripheralManager()
         let mockCentral = MockCentralManager(configuration: config)
-        let system = BLEActorSystem(
+        _ = BLEActorSystem(
             peripheralManager: mockPeripheral,
             centralManager: mockCentral
         )
@@ -346,7 +346,7 @@ struct MockActorSystemTests {
 
         let mockPeripheral = MockPeripheralManager(configuration: config)
         let mockCentral = MockCentralManager()
-        let system = BLEActorSystem(
+        _ = BLEActorSystem(
             peripheralManager: mockPeripheral,
             centralManager: mockCentral
         )

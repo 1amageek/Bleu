@@ -112,8 +112,8 @@ struct BLEErrorTests {
         let error1 = BleuError.bluetoothUnavailable
         let error2 = BleuError.bluetoothPoweredOff
         let error3 = BleuError.peripheralNotFound(UUID())
-        let error4 = BleuError.connectionTimeout
-        
+        _ = BleuError.connectionTimeout
+
         // Just verify these compile and can be created
         // Note: BleuError doesn't conform to Equatable, so we can't compare directly
         // We'll just verify they can be created
@@ -121,14 +121,21 @@ struct BLEErrorTests {
         case .bluetoothUnavailable:
             #expect(true)
         default:
-            #expect(false)
+            Issue.record("Expected bluetoothUnavailable error")
         }
-        
+
+        switch error2 {
+        case .bluetoothPoweredOff:
+            #expect(true)
+        default:
+            Issue.record("Expected bluetoothPoweredOff error")
+        }
+
         switch error3 {
         case .peripheralNotFound:
             #expect(true)
         default:
-            #expect(false)
+            Issue.record("Expected peripheralNotFound error")
         }
     }
 }

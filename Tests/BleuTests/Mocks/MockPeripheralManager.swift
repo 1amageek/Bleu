@@ -22,6 +22,8 @@ public actor MockPeripheralManager: BLEPeripheralManagerProtocol {
     // MARK: - Configuration
 
     public struct Configuration: Sendable {
+        // MARK: - Existing Properties (unchanged for backward compatibility)
+
         /// Initial Bluetooth state
         public var initialState: CBManagerState = .poweredOn
 
@@ -57,6 +59,58 @@ public actor MockPeripheralManager: BLEPeripheralManagerProtocol {
                 }
             }
         }
+
+        // MARK: - NEW: Phase 1 - Behavioral Realism
+
+        /// Enable realistic CoreBluetooth behavior
+        public var realisticBehavior: Bool = false
+
+        /// State transition behavior (same as MockCentralManager)
+        public enum StateTransitionMode: Sendable {
+            case instant                              // Current behavior: immediate transition
+            case realistic(duration: TimeInterval)    // Simulates real state change timing
+            case stuck(CBManagerState)                // Never transitions from this state
+        }
+        public var stateTransition: StateTransitionMode = .instant
+
+        /// UpdateValue queue behavior (peripheral-specific)
+        public enum QueueBehavior: Sendable {
+            case infinite                              // Current: never fails (default)
+            case realistic(capacity: Int, retries: Int)  // Matches real queue behavior
+        }
+        public var queueBehavior: QueueBehavior = .infinite
+
+        /// Error injection configuration for testing error handling
+        public struct ErrorInjection: Sendable {
+            public var serviceAddition: Error? = nil
+            public var advertisingStart: Error? = nil
+            public var updateValue: Error? = nil
+            public var queueFullProbability: Double = 0.0  // 0.0-1.0 probability of queue being full
+
+            public init(
+                serviceAddition: Error? = nil,
+                advertisingStart: Error? = nil,
+                updateValue: Error? = nil,
+                queueFullProbability: Double = 0.0
+            ) {
+                self.serviceAddition = serviceAddition
+                self.advertisingStart = advertisingStart
+                self.updateValue = updateValue
+                self.queueFullProbability = queueFullProbability
+            }
+
+            public static var none: ErrorInjection { ErrorInjection() }
+        }
+        public var errorInjection: ErrorInjection = .none
+
+        /// Update MTU on subscription (matches real CoreBluetooth behavior)
+        public var updateMTUOnSubscription: Bool = true
+
+        /// Support read requests (new functionality)
+        public var supportReadRequests: Bool = true
+
+        /// Fragmentation support - use BLETransport like real implementation
+        public var useFragmentation: Bool = true
 
         public init() {}
     }
@@ -98,14 +152,67 @@ public actor MockPeripheralManager: BLEPeripheralManagerProtocol {
             return .poweredOn
         }
 
-        // Only transition if not already powered on
-        // No artificial delay - mock should be instant
-        _state = .poweredOn
-        await eventChannel.send(.stateChanged(.poweredOn))
-        return .poweredOn
+        // Handle state transition based on configuration mode
+        switch config.stateTransition {
+        case .instant:
+            // Default behavior: instant transition (backward compatible)
+            _state = .poweredOn
+            await eventChannel.send(.stateChanged(.poweredOn))
+            return .poweredOn
+
+        case .realistic(let duration):
+            // Realistic mode: simulate state transition timing
+            if duration > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
+            }
+
+            // Check if transition to poweredOn is possible
+            if shouldTransitionToPoweredOn() {
+                _state = .poweredOn
+                await eventChannel.send(.stateChanged(.poweredOn))
+            }
+            return _state
+
+        case .stuck(let stuckState):
+            // Stuck mode: never transitions (for testing authorization failures)
+            _state = stuckState
+            await eventChannel.send(.stateChanged(stuckState))
+            return stuckState
+        }
+    }
+
+    /// Determines if state can transition to .poweredOn
+    /// Simulates real CoreBluetooth state transition logic
+    private func shouldTransitionToPoweredOn() -> Bool {
+        switch _state {
+        case .unauthorized, .unsupported:
+            // Cannot transition from these states
+            return false
+        case .poweredOff, .resetting, .unknown:
+            // Can transition to .poweredOn from these states
+            return true
+        case .poweredOn:
+            // Already powered on
+            return true
+        @unknown default:
+            return false
+        }
     }
 
     public func add(_ service: ServiceMetadata) async throws {
+        // Realistic mode: validate state (matches real CoreBluetooth)
+        if config.realisticBehavior {
+            guard _state == .poweredOn else {
+                throw BleuError.bluetoothPoweredOff
+            }
+        }
+
+        // Error injection
+        if let error = config.errorInjection.serviceAddition {
+            throw error
+        }
+
+        // Backward compatible: simple flag check
         if config.shouldFailServiceAdd {
             throw BleuError.operationNotSupported
         }
@@ -124,13 +231,17 @@ public actor MockPeripheralManager: BLEPeripheralManagerProtocol {
                     peripheralID,
                     serviceUUID: service.uuid,
                     characteristicUUID: char.uuid,
-                    writeHandler: { [weak self] charUUID, data in
+                    writeHandler: { [weak self] centralID, charUUID, data in
                         guard let self = self else { return }
+
+                        // Register large MTU for this central in mock mode
+                        await BLETransport.shared.updateMaxPayloadSize(for: centralID, maxWriteLength: 512)
+
                         // Store the value
                         await self.storeCharacteristicValue(charUUID, data: data)
                         // Send event to local system
                         await self.eventChannel.send(.writeRequestReceived(
-                            UUID(),  // central ID - unknown in bridge mode
+                            centralID,  // Use central ID from bridge
                             service.uuid,
                             charUUID,
                             data
@@ -138,7 +249,42 @@ public actor MockPeripheralManager: BLEPeripheralManagerProtocol {
                     }
                 )
             }
+
+            // Register disconnection handler (once per peripheral, not per characteristic)
+            await bridge.registerDisconnectionHandler(for: peripheralID) { [weak self] centralID in
+                guard let self = self else { return }
+                await self.handleCentralDisconnected(centralID)
+            }
         }
+    }
+
+    /// Handle central disconnection (peripheral side)
+    /// Automatically cleans up subscriptions for the disconnected central
+    private func handleCentralDisconnected(_ centralID: UUID) async {
+        // Remove subscriptions for this central
+        for (charUUID, centrals) in subscribedCentrals {
+            var updatedCentrals = centrals
+            updatedCentrals.remove(centralID)
+            subscribedCentrals[charUUID] = updatedCentrals
+
+            // Send unsubscribed event if this central was subscribed
+            if centrals.contains(centralID) {
+                await eventChannel.send(.centralUnsubscribed(
+                    centralID,
+                    UUID(),  // service UUID
+                    charUUID
+                ))
+            }
+        }
+
+        // Remove MTU for this central
+        if config.updateMTUOnSubscription {
+            await BLETransport.shared.removeMTU(for: centralID)
+        }
+
+        // Send disconnect event to peripheral system
+        // Note: BLEEvent doesn't have peripheralDisconnected for peripheral side,
+        // so we use centralUnsubscribed as a proxy for cleanup
     }
 
     /// Store characteristic value (internal helper)
@@ -153,6 +299,12 @@ public actor MockPeripheralManager: BLEPeripheralManagerProtocol {
     }
 
     public func startAdvertising(_ data: AdvertisementData) async throws {
+        // Error injection
+        if let error = config.errorInjection.advertisingStart {
+            throw error
+        }
+
+        // Backward compatible: simple flag check
         if config.shouldFailAdvertising {
             throw BleuError.operationNotSupported
         }
@@ -165,7 +317,6 @@ public actor MockPeripheralManager: BLEPeripheralManagerProtocol {
         }
 
         _isAdvertising = true
-        // Mock: advertising always succeeds
     }
 
     public func stopAdvertising() async {
@@ -190,32 +341,89 @@ public actor MockPeripheralManager: BLEPeripheralManagerProtocol {
             )
         }
 
+        // Queue behavior simulation
+        switch config.queueBehavior {
+        case .infinite:
+            // Default behavior: always succeeds
+            return try await sendUpdateValue(data, for: characteristicUUID, to: centrals)
+
+        case .realistic(_, let maxRetries):
+            // Realistic mode: simulate queue full behavior
+            var retries = 0
+
+            while retries < maxRetries {
+                // Check if queue is full (random simulation based on probability)
+                let queueFullChance = config.errorInjection.queueFullProbability
+                let isQueueFull = Double.random(in: 0...1) < queueFullChance
+
+                if !isQueueFull {
+                    // Queue has space - send notification
+                    return try await sendUpdateValue(data, for: characteristicUUID, to: centrals)
+                }
+
+                // Queue full - wait and retry (matches real CoreBluetooth)
+                retries += 1
+                if retries < maxRetries {
+                    try await Task.sleep(nanoseconds: 10_000_000)  // 10ms between retries
+                }
+            }
+
+            // Max retries exhausted - check if should throw or return false
+            if let error = config.errorInjection.updateValue {
+                throw error
+            }
+            return false  // Indicates queue still full
+        }
+    }
+
+    /// Internal helper to send update value (shared by both queue modes)
+    private func sendUpdateValue(
+        _ data: Data,
+        for characteristicUUID: UUID,
+        to centrals: [UUID]?
+    ) async throws -> Bool {
         characteristicValues[characteristicUUID] = data
 
         if config.useBridge, let peripheralID = peripheralID, let bridge = config.bridge {
-            // Use bridge for cross-system communication
+            // Bridge mode: Bridge handles routing - skip subscription checks
+            // The bridge will only deliver notifications to centrals that have registered handlers
             await bridge.peripheralNotify(
                 from: peripheralID,
                 characteristicUUID: characteristicUUID,
                 value: data
             )
         } else {
-            // Local event channel for same-system communication
-            let centralsToNotify = centrals ?? Array(
-                subscribedCentrals[characteristicUUID] ?? []
-            )
+            // Non-bridge mode: Check subscriptions and filter centrals
+            // CRITICAL SECURITY FIX: If centrals filter is provided but results in empty list, throw error
+            let centralsToNotify: [UUID]
+            if let requestedCentralIDs = centrals {
+                let allSubscribed = subscribedCentrals[characteristicUUID] ?? []
+                let filtered = allSubscribed.filter { requestedCentralIDs.contains($0) }
 
+                // Empty filter result - refuse to broadcast
+                if filtered.isEmpty {
+                    throw BleuError.peripheralNotFound(requestedCentralIDs.first ?? UUID())
+                }
+
+                centralsToNotify = Array(filtered)
+            } else {
+                // No filter - send to all subscribers
+                centralsToNotify = Array(subscribedCentrals[characteristicUUID] ?? [])
+            }
+
+            // Local event channel for same-system communication
             for centralID in centralsToNotify {
                 await eventChannel.send(.characteristicValueUpdated(
                     centralID,
                     UUID(),  // service UUID
                     characteristicUUID,
-                    data
+                    data,
+                    nil  // no error in mock
                 ))
             }
         }
 
-        return true  // Mock always succeeds
+        return true
     }
 
     public func subscribedCentrals(for characteristicUUID: UUID) async -> [UUID] {
@@ -233,7 +441,43 @@ public actor MockPeripheralManager: BLEPeripheralManagerProtocol {
         centrals.insert(central)
         subscribedCentrals[characteristic] = centrals
 
+        // Update MTU like real CoreBluetoothPeripheralManager
+        if config.updateMTUOnSubscription {
+            // Get realistic MTU for this central (varies by device)
+            let mtu: Int
+            if config.realisticBehavior {
+                // Realistic variation (common iOS/macOS MTU values)
+                let realisticMTUs = [23, 27, 158, 185, 247, 251, 512]
+                mtu = realisticMTUs.randomElement() ?? 185
+            } else {
+                // Fast/predictable (backward compatible)
+                mtu = 512
+            }
+
+            // Register with BLETransport
+            await BLETransport.shared.updateMaxPayloadSize(for: central, maxWriteLength: mtu)
+        }
+
         await eventChannel.send(.centralSubscribed(
+            central,
+            UUID(),  // service UUID
+            characteristic
+        ))
+    }
+
+    /// Simulate a central unsubscribing from a characteristic
+    public func simulateUnsubscription(
+        central: UUID,
+        from characteristic: UUID
+    ) async {
+        subscribedCentrals[characteristic]?.remove(central)
+
+        // Remove MTU like real implementation
+        if config.updateMTUOnSubscription {
+            await BLETransport.shared.removeMTU(for: central)
+        }
+
+        await eventChannel.send(.centralUnsubscribed(
             central,
             UUID(),  // service UUID
             characteristic
@@ -253,6 +497,55 @@ public actor MockPeripheralManager: BLEPeripheralManagerProtocol {
             characteristic,
             value
         ))
+    }
+
+    /// Simulate a read request from a central
+    /// - Parameters:
+    ///   - central: Central UUID requesting the read
+    ///   - characteristic: Characteristic UUID being read
+    ///   - offset: Byte offset for read (0 for complete read)
+    /// - Returns: Data at the characteristic, or throws ATT error
+    public func simulateReadRequest(
+        from central: UUID,
+        for characteristic: UUID,
+        offset: Int = 0
+    ) async throws -> Data {
+        guard config.supportReadRequests else {
+            throw BleuError.operationNotSupported
+        }
+
+        // Get characteristic value
+        guard let value = characteristicValues[characteristic] else {
+            // No value set - return ATT error
+            let error = NSError(
+                domain: CBATTErrorDomain,
+                code: CBATTError.readNotPermitted.rawValue,
+                userInfo: [NSLocalizedDescriptionKey: "Characteristic has no value"]
+            )
+            throw error
+        }
+
+        // Validate offset
+        guard offset >= 0 && offset < value.count else {
+            let error = NSError(
+                domain: CBATTErrorDomain,
+                code: CBATTError.invalidOffset.rawValue,
+                userInfo: [NSLocalizedDescriptionKey: "Invalid offset \(offset)"]
+            )
+            throw error
+        }
+
+        // Return value from offset
+        let result = value[offset...]
+
+        // Send event (BLEEvent.readRequestReceived takes 3 UUIDs only)
+        await eventChannel.send(.readRequestReceived(
+            central,
+            UUID(),  // service UUID
+            characteristic
+        ))
+
+        return Data(result)
     }
 
     /// Change Bluetooth state (for testing state transitions)

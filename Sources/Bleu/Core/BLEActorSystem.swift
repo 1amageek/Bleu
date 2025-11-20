@@ -4,6 +4,7 @@ import Distributed
 import ActorRuntime
 import os
 
+
 /// Actor to manage system initialization state
 public actor BLEActorSystemBootstrap {
     private var peripheralState: CBManagerState = .unknown
@@ -43,6 +44,10 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
     private actor ProxyManager {
         private var peripheralProxies: [UUID: PeripheralActorProxy] = [:]
         private var pendingCalls: [String: CheckedContinuation<Data, Error>] = [:]
+        private var peripheralCalls: [UUID: Set<String>] = [:]  // Track which calls belong to which peripheral
+        private var callIDToPeripheral: [String: UUID] = [:]  // Reverse mapping for O(1) lookup
+        private var pendingCallsQueue: [UUID: [String]] = [:]  // FIFO queue of pending calls per peripheral for ATT error handling
+        private var cancelledCalls: [String: Error] = [:]  // Track calls cancelled before continuation was stored (timeout race fix)
 
         func get(_ id: UUID) -> PeripheralActorProxy? {
             return peripheralProxies[id]
@@ -61,29 +66,123 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         }
 
         // Pending call management
-        func storePendingCall(_ callID: String, continuation: CheckedContinuation<Data, Error>) {
+        func storePendingCall(_ callID: String, for peripheralID: UUID, continuation: CheckedContinuation<Data, Error>) {
+            // CRITICAL RACE FIX: Check if this call was already cancelled (e.g., by timeout)
+            // This can happen when timeout fires BEFORE the Task{} in withCheckedThrowingContinuation executes
+            if let error = cancelledCalls.removeValue(forKey: callID) {
+                // Call was already cancelled - immediately resume with the error
+                continuation.resume(throwing: error)
+                return
+            }
+
             pendingCalls[callID] = continuation
+            peripheralCalls[peripheralID, default: []].insert(callID)
+            callIDToPeripheral[callID] = peripheralID
+
+            // CONCURRENT RPC FIX: Track calls in FIFO queue for better ATT error matching
+            // ATT errors typically affect the oldest pending request
+            pendingCallsQueue[peripheralID, default: []].append(callID)
         }
 
         func resumePendingCall(_ callID: String, with result: Result<Data, Error>) {
             if let continuation = pendingCalls.removeValue(forKey: callID) {
                 continuation.resume(with: result)
+                // O(1) lookup using reverse mapping instead of O(n*m) loop
+                if let peripheralID = callIDToPeripheral.removeValue(forKey: callID) {
+                    peripheralCalls[peripheralID]?.remove(callID)
+                    if peripheralCalls[peripheralID]?.isEmpty == true {
+                        peripheralCalls.removeValue(forKey: peripheralID)
+                    }
+
+                    // CONCURRENT RPC FIX: Remove from FIFO queue
+                    if let index = pendingCallsQueue[peripheralID]?.firstIndex(of: callID) {
+                        pendingCallsQueue[peripheralID]?.remove(at: index)
+                        if pendingCallsQueue[peripheralID]?.isEmpty == true {
+                            pendingCallsQueue.removeValue(forKey: peripheralID)
+                        }
+                    }
+                }
             }
         }
 
         func cancelPendingCall(_ callID: String, error: Error) {
             if let continuation = pendingCalls.removeValue(forKey: callID) {
+                // Continuation exists - resume it with error
                 continuation.resume(throwing: error)
+                // O(1) lookup using reverse mapping instead of O(n*m) loop
+                if let peripheralID = callIDToPeripheral.removeValue(forKey: callID) {
+                    peripheralCalls[peripheralID]?.remove(callID)
+                    if peripheralCalls[peripheralID]?.isEmpty == true {
+                        peripheralCalls.removeValue(forKey: peripheralID)
+                    }
+
+                    // CONCURRENT RPC FIX: Remove from FIFO queue
+                    if let index = pendingCallsQueue[peripheralID]?.firstIndex(of: callID) {
+                        pendingCallsQueue[peripheralID]?.remove(at: index)
+                        if pendingCallsQueue[peripheralID]?.isEmpty == true {
+                            pendingCallsQueue.removeValue(forKey: peripheralID)
+                        }
+                    }
+                }
+            } else {
+                // CRITICAL RACE FIX: Continuation not yet stored (timeout won race)
+                // Store the error so storePendingCall can handle it when it arrives
+                cancelledCalls[callID] = error
+
+                // Also remove from FIFO queue
+                if let peripheralID = callIDToPeripheral.removeValue(forKey: callID) {
+                    if let index = pendingCallsQueue[peripheralID]?.firstIndex(of: callID) {
+                        pendingCallsQueue[peripheralID]?.remove(at: index)
+                        if pendingCallsQueue[peripheralID]?.isEmpty == true {
+                            pendingCallsQueue.removeValue(forKey: peripheralID)
+                        }
+                    }
+                }
             }
         }
 
-        func cancelAllPendingCalls(for peripheralID: UUID, error: Error) {
-            // Cancel all pending calls - we don't track by peripheral currently
-            // This is a limitation that could be improved
-            for (_, continuation) in pendingCalls {
-                continuation.resume(throwing: error)
+        /// Cancel the oldest pending call for a peripheral (for ATT errors)
+        /// CONCURRENT RPC FIX: ATT errors typically affect the oldest pending request in FIFO order
+        /// This is a best-effort approach since CoreBluetooth doesn't provide exact callID mapping
+        func cancelOldestPendingCall(for peripheralID: UUID, error: Error) -> Bool {
+            // Get the oldest pending call from FIFO queue
+            guard let oldestCallID = pendingCallsQueue[peripheralID]?.first else {
+                // No pending calls - ATT error for already-completed request
+                BleuLogger.actorSystem.debug("ATT error for peripheral \(peripheralID) but no pending calls - likely already completed")
+                return false
             }
-            pendingCalls.removeAll()
+
+            // Check if this call is actually still pending
+            guard pendingCalls[oldestCallID] != nil else {
+                // Call already completed but still in queue - remove and try next
+                pendingCallsQueue[peripheralID]?.removeFirst()
+                if pendingCallsQueue[peripheralID]?.isEmpty == true {
+                    pendingCallsQueue.removeValue(forKey: peripheralID)
+                }
+                BleuLogger.actorSystem.debug("Oldest call \(oldestCallID) already completed - trying next in queue")
+                return cancelOldestPendingCall(for: peripheralID, error: error)
+            }
+
+            BleuLogger.actorSystem.debug("Canceling oldest pending call \(oldestCallID) for peripheral \(peripheralID) due to ATT error")
+            cancelPendingCall(oldestCallID, error: error)
+            return true
+        }
+
+        func cancelAllPendingCalls(for peripheralID: UUID, error: Error) {
+            // Cancel ALL calls for this specific peripheral (used for disconnection)
+            guard let callIDs = peripheralCalls.removeValue(forKey: peripheralID) else {
+                return
+            }
+
+            for callID in callIDs {
+                if let continuation = pendingCalls.removeValue(forKey: callID) {
+                    continuation.resume(throwing: error)
+                }
+                callIDToPeripheral.removeValue(forKey: callID)  // Clean up reverse mapping
+            }
+
+            // CONCURRENT RPC FIX: Clean up FIFO queue
+            pendingCallsQueue.removeValue(forKey: peripheralID)
         }
     }
     
@@ -152,8 +251,24 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
             // Update central manager state in bootstrap
             await bootstrap.updateCentralState(state)
 
-        case .characteristicValueUpdated(_, _, _, let data):
+        case .characteristicValueUpdated(let peripheralID, _, _, let data, let error):
             // This is a response to an RPC call we made
+
+            // Check for ATT error first and fail the most recent call
+            if let error = error {
+                BleuLogger.actorSystem.error("ATT error received for peripheral \(peripheralID): \(error)")
+
+                // CONCURRENT RPC FIX: Cancel the oldest pending call (FIFO order)
+                // ATT errors typically affect the first pending request still in flight
+                let canceled = await proxyManager.cancelOldestPendingCall(for: peripheralID, error: error)
+
+                if !canceled {
+                    // No pending calls - ATT error likely for already-completed request or notification
+                    BleuLogger.actorSystem.warning("ATT error but no pending call to cancel - may be stale or for notification")
+                }
+                return
+            }
+
             guard let data = data else { return }
             do {
                 // Unpack BLETransport packet if needed
@@ -206,8 +321,8 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
                 let responseEnvelope = await handleIncomingRPC(invocationEnvelope)
                 let responseData = try JSONEncoder().encode(responseEnvelope)
 
-                // Pack response with BLETransport for transmission
-                let packets = await transport.fragment(responseData)
+                // Pack response with BLETransport for transmission to this specific central
+                let packets = await transport.fragment(responseData, for: central)
                 for packet in packets {
                     let packedData = await transport.packPacket(packet)
                     // Send response back via notification to the specific central
@@ -385,39 +500,47 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         let envelopeData = try JSONEncoder().encode(envelope)
 
         // 4. Send via BLE and wait for response with timeout
-        let responseData = try await withThrowingTaskGroup(of: Data.self) { group in
-            // Task 1: Send and wait for response
-            group.addTask { [weak self] in
-                guard let self = self else {
-                    throw BleuError.actorNotFound(actor.id)
-                }
+        let responseData: Data
+        do {
+            responseData = try await withThrowingTaskGroup(of: Data.self) { group in
+                // Task 1: Send and wait for response
+                group.addTask { [weak self] in
+                    guard let self = self else {
+                        throw BleuError.actorNotFound(actor.id)
+                    }
 
-                return try await withCheckedThrowingContinuation { continuation in
-                    Task {
-                        // Store continuation for when response arrives
-                        await self.proxyManager.storePendingCall(envelope.callID, continuation: continuation)
+                    return try await withCheckedThrowingContinuation { continuation in
+                        Task {
+                            // Store continuation for when response arrives, tracking which peripheral it's for
+                            await self.proxyManager.storePendingCall(envelope.callID, for: actor.id, continuation: continuation)
 
-                        // Send the request
-                        do {
-                            try await proxy.sendMessage(envelopeData)
-                        } catch {
-                            // If send fails, cancel the pending call
-                            await self.proxyManager.cancelPendingCall(envelope.callID, error: error)
+                            // Send the request
+                            do {
+                                try await proxy.sendMessage(envelopeData)
+                            } catch {
+                                // If send fails, cancel the pending call
+                                await self.proxyManager.cancelPendingCall(envelope.callID, error: error)
+                            }
                         }
                     }
                 }
-            }
 
-            // Task 2: Timeout
-            group.addTask {
-                try await Task.sleep(nanoseconds: 10_000_000_000) // 10 seconds
-                throw BleuError.connectionTimeout
-            }
+                // Task 2: Timeout
+                group.addTask {
+                    try await Task.sleep(nanoseconds: 10_000_000_000) // 10 seconds
+                    throw BleuError.connectionTimeout
+                }
 
-            // Wait for first result (either response or timeout)
-            let result = try await group.next()!
-            group.cancelAll()
-            return result
+                // Wait for first result (either response or timeout)
+                let result = try await group.next()!
+                group.cancelAll()
+                return result
+            }
+        } catch {
+            // CRITICAL FIX: Clean up pending call on ANY error (timeout, send failure, etc.)
+            // This prevents continuation leaks when timeout occurs
+            await proxyManager.cancelPendingCall(envelope.callID, error: error)
+            throw error
         }
 
         // 5. Deserialize response envelope
@@ -461,19 +584,22 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
     // MARK: - Local Invocation Support
     
     /// Execute a distributed target locally (called by peripheral when receiving RPC)
-    public func executeDistributedTarget<Act, Res>(
+    /// This delegates to Swift's global executeDistributedTarget function
+    /// Implementation follows the same pattern as InMemoryActorSystem
+    private func _executeDistributedTargetLocally<Act: DistributedActor>(
         on actor: Act,
-        target: Distributed.RemoteCallTarget,
-        invocationDecoder: inout InvocationDecoder,
-        returning: Res.Type
-    ) async throws -> Res
-        where Act: DistributedActor,
-              Act.ID == ActorID,
-              Res: SerializationRequirement {
-        
-        // NOTE: This requires access to Swift's internal distributed actor runtime APIs
-        // which are not publicly available. Will be implemented when Swift exposes these APIs.
-        throw BleuError.methodNotSupported(target.identifier)
+        target: RemoteCallTarget,
+        invocationDecoder: inout CodableInvocationDecoder,
+        handler: CodableResultHandler
+    ) async throws {
+        // Call Swift's global executeDistributedTarget function
+        // This is available from Swift 5.7+ via the Distributed module
+        try await executeDistributedTarget(
+            on: actor,
+            target: target,
+            invocationDecoder: &invocationDecoder,
+            handler: handler
+        )
     }
     
     /// Handle an incoming RPC invocation (called by LocalPeripheralActor)
@@ -499,7 +625,7 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
             }
 
             // Execute the distributed target using Swift's built-in mechanism
-            try await executeDistributedTarget(
+            try await _executeDistributedTargetLocally(
                 on: actor,
                 target: target,
                 invocationDecoder: &decoder,
@@ -697,6 +823,10 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         // Remove proxy from ProxyManager
         await proxyManager.remove(peripheralID)
 
+        // Remove MTU entry from BLETransport
+        let transport = BLETransport.shared
+        await transport.removeMTU(for: peripheralID)
+
         BleuLogger.actorSystem.debug("Cleaned up state for peripheral \(peripheralID)")
     }
 
@@ -705,7 +835,8 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         // Get the maximum write value length for the connected peripheral
         if let maxWriteLength = await centralManager.maximumWriteValueLength(for: peripheralID, type: .withResponse) {
             let transport = BLETransport.shared
-            await transport.updateMaxPayloadSize(maxWriteLength: maxWriteLength)
+            // Store MTU per device to handle multiple connections with different MTUs
+            await transport.updateMaxPayloadSize(for: peripheralID, maxWriteLength: maxWriteLength)
         }
     }
     

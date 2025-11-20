@@ -219,7 +219,7 @@ struct FullWorkflowTests {
 
         // Attempt connection - should fail
         do {
-            try await centralSystem.connect(to: peripheralID, as: SimpleValueActor.self)
+            _ = try await centralSystem.connect(to: peripheralID, as: SimpleValueActor.self)
             Issue.record("Expected connection to fail")
         } catch let error as BleuError {
             if case .connectionFailed = error {
@@ -253,7 +253,7 @@ struct FullWorkflowTests {
 
         // Attempt connection - should timeout
         do {
-            try await centralSystem.connect(to: peripheralID, as: SimpleValueActor.self)
+            _ = try await centralSystem.connect(to: peripheralID, as: SimpleValueActor.self)
             Issue.record("Expected connection to timeout")
         } catch let error as BleuError {
             if case .connectionTimeout = error {

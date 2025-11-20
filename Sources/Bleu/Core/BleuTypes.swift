@@ -193,7 +193,7 @@ public enum BLEEvent: Sendable {
     case peripheralDisconnected(UUID, Error?)
     case serviceDiscovered(UUID, [ServiceMetadata])
     case characteristicDiscovered(UUID, UUID, [CharacteristicMetadata])
-    case characteristicValueUpdated(UUID, UUID, UUID, Data?)
+    case characteristicValueUpdated(UUID, UUID, UUID, Data?, Error?)  // Added Error parameter for ATT error propagation
     case characteristicWriteCompleted(UUID, UUID, UUID, Error?)
     case notificationStateChanged(UUID, UUID, UUID, Bool)
     case centralSubscribed(UUID, UUID, UUID)

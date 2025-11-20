@@ -32,10 +32,15 @@ public actor MockBLEBridge {
     // MARK: - Types
 
     /// Handler for characteristic writes (peripheral side)
-    public typealias WriteHandler = @Sendable (UUID, Data) async -> Void
+    /// Parameters: (centralID, characteristicUUID, data)
+    public typealias WriteHandler = @Sendable (UUID, UUID, Data) async -> Void
 
     /// Handler for characteristic notifications (central side)
     public typealias NotificationHandler = @Sendable (UUID, Data) async -> Void
+
+    /// Handler for central disconnection (peripheral side)
+    /// Parameter: centralID that disconnected
+    public typealias DisconnectionHandler = @Sendable (UUID) async -> Void
 
     // MARK: - State
 
@@ -44,6 +49,9 @@ public actor MockBLEBridge {
 
     /// Registered centrals: centralID -> peripheralID -> (charUUID -> notificationHandler)
     private var centrals: [UUID: [UUID: [UUID: NotificationHandler]]] = [:]
+
+    /// Disconnection handlers: peripheralID -> disconnectionHandler
+    private var disconnectionHandlers: [UUID: DisconnectionHandler] = [:]
 
     /// Characteristic values: peripheralID -> (charUUID -> value)
     private var characteristicValues: [UUID: [UUID: Data]] = [:]
@@ -66,10 +74,19 @@ public actor MockBLEBridge {
         peripherals[peripheralID]?[serviceUUID]?[characteristicUUID] = writeHandler
     }
 
+    /// Register a peripheral's disconnection handler
+    public func registerDisconnectionHandler(
+        for peripheralID: UUID,
+        handler: @escaping DisconnectionHandler
+    ) {
+        disconnectionHandlers[peripheralID] = handler
+    }
+
     /// Unregister a peripheral
     public func unregisterPeripheral(_ peripheralID: UUID) {
         peripherals.removeValue(forKey: peripheralID)
         characteristicValues.removeValue(forKey: peripheralID)
+        disconnectionHandlers.removeValue(forKey: peripheralID)
     }
 
     // MARK: - Central Registration
@@ -120,7 +137,7 @@ public actor MockBLEBridge {
         // We don't know the service UUID, so search all services
         for (_, characteristics) in peripherals[peripheralID] ?? [:] {
             if let handler = characteristics[characteristicUUID] {
-                await handler(characteristicUUID, value)
+                await handler(centralID, characteristicUUID, value)
                 return
             }
         }
@@ -158,10 +175,23 @@ public actor MockBLEBridge {
         }
     }
 
+    /// Central disconnects from peripheral
+    /// This notifies the peripheral side about the disconnection
+    public func centralDisconnected(centralID: UUID, from peripheralID: UUID) async {
+        // Remove central's subscription to this peripheral
+        centrals[centralID]?.removeValue(forKey: peripheralID)
+
+        // Notify peripheral about disconnection
+        if let handler = disconnectionHandlers[peripheralID] {
+            await handler(centralID)
+        }
+    }
+
     /// Clear all registrations (for testing)
     public func reset() {
         peripherals.removeAll()
         centrals.removeAll()
         characteristicValues.removeAll()
+        disconnectionHandlers.removeAll()
     }
 }

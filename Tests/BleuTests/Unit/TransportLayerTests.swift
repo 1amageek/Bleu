@@ -19,9 +19,13 @@ struct TransportLayerTests {
 
         for (name, size) in testCases {
             let testData = Data(repeating: 0xFF, count: size)
+            let deviceID = UUID()
 
-            // Fragment
-            let packets = await transport.fragment(testData)
+            // Set MTU for the test device
+            await transport.updateMaxPayloadSize(for: deviceID, maxWriteLength: 512)
+
+            // Fragment for a specific device
+            let packets = await transport.fragment(testData, for: deviceID)
 
             // Reassemble using proper binary format
             var reassembled: Data?

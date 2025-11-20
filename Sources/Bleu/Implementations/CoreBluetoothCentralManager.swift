@@ -446,11 +446,13 @@ public actor CoreBluetoothCentralManager: BLECentralManagerProtocol {
         }
         let charUUID = UUID(uuidString: characteristicUUID) ?? UUID.deterministic(from: characteristicUUID)
 
+        // Include error in event for proper ATT error propagation
         await messageChannel.send(.characteristicValueUpdated(
             peripheralID,
             svcUUID,
             charUUID,
-            value
+            value,
+            error  // Now propagate ATT errors to BLEActorSystem
         ))
     }
 }

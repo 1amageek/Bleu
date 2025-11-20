@@ -363,12 +363,14 @@ public actor LocalCentralActor {
             UUID()
         }
         let charUUID = UUID(uuidString: characteristicUUID) ?? UUID.deterministic(from: characteristicUUID)
-        
+
+        // Propagate error to BLEActorSystem for immediate failure
         await messageChannel.send(.characteristicValueUpdated(
             peripheralID,
             svcUUID,
             charUUID,
-            value
+            value,
+            error
         ))
     }
 }

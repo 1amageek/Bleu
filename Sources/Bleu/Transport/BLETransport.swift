@@ -3,10 +3,24 @@ import CoreBluetooth
 import os
 
 /// Handles reliable data transport over BLE
+///
+/// **Architecture Note**: This is a singleton shared across all BLEActorSystem instances.
+/// This design is intentional because:
+/// 1. BLEActorSystem follows a singleton pattern (BLEActorSystem.shared)
+/// 2. Device MTU state is inherently global (tied to physical devices)
+/// 3. Packet reassembly state should be shared across the process
+///
+/// **Caveat**: In test environments with multiple BLEActorSystem instances,
+/// MTU state is shared via device UUID keys. This is safe as long as:
+/// - Each system uses unique device UUIDs
+/// - Tests properly clean up via removeMTU() on disconnection
 public actor BLETransport {
-    
-    /// Maximum write length for BLE packets (including header)
-    private var maxWriteLength: Int
+
+    /// Maximum write length for BLE packets (including header) - per device
+    /// Stored as [deviceID: MTU] to support multiple simultaneous connections
+    /// with different MTU values
+    private var deviceMTU: [UUID: Int] = [:]
+    private let defaultMTU: Int = 20  // Minimum guaranteed BLE MTU
     
     /// Header overhead for packet metadata (UUID:16B + sequence:2B + total:2B + checksum:4B)
     private let headerOverhead = 24
@@ -73,11 +87,9 @@ public actor BLETransport {
     private let configManager = BleuConfigurationManager.shared
     
     /// Shared instance
-    public static let shared = BLETransport(defaultWriteLength: 512)
-    
-    public init(defaultWriteLength: Int = 512) {
-        self.maxWriteLength = defaultWriteLength
-        
+    public static let shared = BLETransport()
+
+    public init() {
         // Start cleanup task for timed-out reassembly buffers
         Task {
             await self.assignCleanupTask()
@@ -95,35 +107,46 @@ public actor BLETransport {
         cleanupTask?.cancel()
     }
     
-    /// Update maximum payload size based on negotiated MTU
-    public func updateMaxPayloadSize(from peripheral: CBPeripheral, type: CBCharacteristicWriteType) {
+    /// Update maximum payload size based on negotiated MTU for a specific device
+    public func updateMaxPayloadSize(for deviceID: UUID, from peripheral: CBPeripheral, type: CBCharacteristicWriteType) {
         // Get the maximum write value length for the specific write type
         let maxWriteLength = peripheral.maximumWriteValueLength(for: type)
-        updateMaxPayloadSize(maxWriteLength: maxWriteLength)
+        updateMaxPayloadSize(for: deviceID, maxWriteLength: maxWriteLength)
+    }
+
+    /// Update maximum payload size with a specific write length for a specific device
+    public func updateMaxPayloadSize(for deviceID: UUID, maxWriteLength: Int) {
+        // Store the write length per device, ensuring minimum viable size
+        deviceMTU[deviceID] = max(defaultMTU, maxWriteLength)
+    }
+
+    /// Get MTU for a specific device
+    private func getMTU(for deviceID: UUID) -> Int {
+        return deviceMTU[deviceID] ?? defaultMTU
+    }
+
+    /// Remove MTU entry when device disconnects
+    public func removeMTU(for deviceID: UUID) {
+        deviceMTU.removeValue(forKey: deviceID)
     }
     
-    /// Update maximum payload size with a specific write length
-    public func updateMaxPayloadSize(maxWriteLength: Int) {
-        // Store the write length directly, ensuring minimum viable size
-        self.maxWriteLength = max(20, maxWriteLength)
-    }
-    
-    /// Fragment data into packets
-    public func fragment(_ data: Data) -> [Packet] {
+    /// Fragment data into packets for a specific device
+    public func fragment(_ data: Data, for deviceID: UUID) -> [Packet] {
         guard !data.isEmpty else { return [] }
-        
+
         let id = UUID()
-        // Calculate payload size by subtracting header overhead
-        let payloadSize = max(1, maxWriteLength - headerOverhead)
+        // Get device-specific MTU and calculate payload size
+        let mtu = getMTU(for: deviceID)
+        let payloadSize = max(1, mtu - headerOverhead)
         let totalPackets = UInt16((data.count + payloadSize - 1) / payloadSize)
-        
+
         var packets: [Packet] = []
-        
+
         for i in 0..<totalPackets {
             let start = Int(i) * payloadSize
             let end = min(start + payloadSize, data.count)
             let payload = data[start..<end]
-            
+
             let packet = Packet(
                 id: id,
                 sequenceNumber: i,
@@ -132,7 +155,7 @@ public actor BLETransport {
             )
             packets.append(packet)
         }
-        
+
         return packets
     }
     
@@ -250,7 +273,7 @@ public actor BLETransport {
         using centralManager: BLECentralManagerProtocol,
         characteristicUUID: UUID
     ) async throws {
-        let packets = fragment(data)
+        let packets = fragment(data, for: deviceID)
 
         for packet in packets {
             let packetData = pack(packet)
@@ -279,9 +302,9 @@ public actor BLETransport {
         }
     }
     
-    /// Queue data for transmission
-    public func queueForTransmission(_ data: Data) async {
-        let packets = fragment(data)
+    /// Queue data for transmission for a specific device
+    public func queueForTransmission(_ data: Data, for deviceID: UUID) async {
+        let packets = fragment(data, for: deviceID)
         outgoingQueue.append(contentsOf: packets)
     }
     
@@ -338,7 +361,17 @@ public actor BLETransport {
         return TransportStatistics(
             activeReassemblyBuffers: reassemblyBuffers.count,
             queuedPackets: outgoingQueue.count,
-            maxPayloadSize: max(1, maxWriteLength - headerOverhead)
+            connectedDevices: deviceMTU.count
+        )
+    }
+
+    /// Get statistics for a specific device
+    public func statistics(for deviceID: UUID) -> DeviceTransportStatistics {
+        let mtu = getMTU(for: deviceID)
+        return DeviceTransportStatistics(
+            deviceID: deviceID,
+            mtu: mtu,
+            maxPayloadSize: max(1, mtu - headerOverhead)
         )
     }
 }
@@ -347,5 +380,12 @@ public actor BLETransport {
 public struct TransportStatistics: Sendable {
     public let activeReassemblyBuffers: Int
     public let queuedPackets: Int
+    public let connectedDevices: Int
+}
+
+/// Per-device transport statistics
+public struct DeviceTransportStatistics: Sendable {
+    public let deviceID: UUID
+    public let mtu: Int
     public let maxPayloadSize: Int
 }

@@ -18,11 +18,13 @@ public actor CoreBluetoothPeripheralManager: BLEPeripheralManagerProtocol {
     private var services: [UUID: CBMutableService] = [:]
     private var characteristics: [UUID: CBMutableCharacteristic] = [:]
     private var subscribedCentrals: [UUID: Set<CBCentral>] = [:]
+    private var subscribedCentralIDs: [UUID: Set<UUID>] = [:]  // Track central UUIDs for API compatibility
     private var rpcCharacteristics: Set<UUID> = []  // Track RPC characteristics
 
     // Continuations for async operations
     private var stateContinuations: [CheckedContinuation<CBManagerState, Never>] = []
     private var advertisingContinuation: CheckedContinuation<Void, Error>?
+    private var serviceAddContinuation: CheckedContinuation<Void, Error>?
 
     // MARK: - Initialization
 
@@ -104,8 +106,11 @@ public actor CoreBluetoothPeripheralManager: BLEPeripheralManagerProtocol {
         cbService.characteristics = cbCharacteristics
         services[service.uuid] = cbService
 
-        // Add service to peripheral manager
-        peripheralManager?.add(cbService)
+        // Add service to peripheral manager and wait for completion
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            serviceAddContinuation = continuation
+            peripheralManager?.add(cbService)
+        }
     }
 
     public func startAdvertising(_ data: AdvertisementData) async throws {
@@ -165,30 +170,59 @@ public actor CoreBluetoothPeripheralManager: BLEPeripheralManagerProtocol {
             throw BleuError.characteristicNotFound(characteristicUUID)
         }
 
-        // Convert UUID array to CBCentral array if provided
-        // Note: We can only send to centrals we know about through subscriptions
-        let centralsToUpdate: [CBCentral]?
-        if centrals != nil {
-            // Filter subscribedCentrals to only those in the requested list
-            let allSubscribed = subscribedCentrals[characteristicUUID] ?? []
-            centralsToUpdate = Array(allSubscribed)
-            // Note: We cannot filter by UUID as CBCentral doesn't expose its identifier in peripheral role
-        } else {
-            centralsToUpdate = subscribedCentrals[characteristicUUID].map { Array($0) }
+        guard let peripheralManager = peripheralManager else {
+            throw BleuError.bluetoothUnavailable
         }
 
-        return peripheralManager?.updateValue(
-            data,
-            for: characteristic,
-            onSubscribedCentrals: centralsToUpdate?.isEmpty == false ? centralsToUpdate : nil
-        ) ?? false
+        // Convert UUID array to CBCentral array if provided
+        // Filter by central.identifier to respect the centrals parameter
+        let centralsToUpdate: [CBCentral]
+        if let requestedCentralIDs = centrals {
+            let allSubscribed = subscribedCentrals[characteristicUUID] ?? []
+            // Filter to only centrals whose identifier is in the requested list
+            let filtered = Array(allSubscribed.filter { requestedCentralIDs.contains($0.identifier) })
+
+            // CRITICAL SECURITY FIX: If filter result is empty, DO NOT send to anyone
+            // Sending nil to CoreBluetooth broadcasts to ALL subscribers (privacy leak!)
+            if filtered.isEmpty {
+                BleuLogger.peripheral.error("No matching centrals found for UUIDs \(requestedCentralIDs) - refusing to broadcast")
+                throw BleuError.peripheralNotFound(requestedCentralIDs.first ?? UUID())
+            }
+
+            centralsToUpdate = filtered
+        } else {
+            // No filter specified - send to all subscribers
+            centralsToUpdate = Array(subscribedCentrals[characteristicUUID] ?? [])
+        }
+
+        // CRITICAL: Retry on failure to prevent dropped RPC responses
+        // When updateValue returns false, the queue is full and the notification was NOT sent
+        let maxRetries = 3
+        for attempt in 0..<maxRetries {
+            let success = peripheralManager.updateValue(
+                data,
+                for: characteristic,
+                onSubscribedCentrals: centralsToUpdate.isEmpty ? nil : centralsToUpdate
+            )
+
+            if success {
+                return true
+            }
+
+            // Queue full - wait and retry
+            if attempt < maxRetries - 1 {
+                BleuLogger.peripheral.warning("updateValue failed (queue full), retrying (\(attempt + 1)/\(maxRetries))...")
+                try await Task.sleep(nanoseconds: 10_000_000)  // 10ms
+            }
+        }
+
+        // All retries exhausted - this is a critical error for RPC
+        BleuLogger.peripheral.error("updateValue failed after \(maxRetries) retries - notification dropped!")
+        throw BleuError.rpcFailed("Failed to send notification after \(maxRetries) retries")
     }
 
     public func subscribedCentrals(for characteristicUUID: UUID) async -> [UUID] {
-        // Note: CoreBluetooth doesn't provide central UUIDs in peripheral role
-        // We can only track CBCentral instances, not their identifiers
-        // Return empty array as we cannot provide UUIDs
-        return []
+        return Array(subscribedCentralIDs[characteristicUUID] ?? [])
     }
 }
 
@@ -202,13 +236,13 @@ extension CoreBluetoothPeripheralManager {
     }
 
     /// Track a read request for logging/monitoring
-    func trackReadRequest(characteristicUUID: String, serviceUUID: String?) async {
+    func trackReadRequest(centralID: UUID, characteristicUUID: String, serviceUUID: String?) async {
         guard let charUUID = UUID(uuidString: characteristicUUID) else { return }
         let svcUUID = serviceUUID.flatMap(UUID.init(uuidString:)) ?? UUID()
 
         // Send event for tracking
         await eventChannel.send(.readRequestReceived(
-            UUID(),  // We don't have central ID here
+            centralID,  // Real central identifier from CBCentral
             svcUUID,
             charUUID
         ))
@@ -229,8 +263,20 @@ extension CoreBluetoothPeripheralManager {
     }
 
     func handleServiceAdded(_ service: CBService, error: Error?) async {
-        if let error = error {
-            BleuLogger.peripheral.error("Error adding service: \(error.localizedDescription)")
+        if let continuation = serviceAddContinuation {
+            if let error = error {
+                BleuLogger.peripheral.error("Error adding service: \(error.localizedDescription)")
+                continuation.resume(throwing: error)
+            } else {
+                BleuLogger.peripheral.debug("Successfully added service: \(service.uuid)")
+                continuation.resume()
+            }
+            serviceAddContinuation = nil
+        } else {
+            // If no continuation is waiting, just log (shouldn't happen in normal flow)
+            if let error = error {
+                BleuLogger.peripheral.error("Error adding service (no continuation): \(error.localizedDescription)")
+            }
         }
     }
 
@@ -246,10 +292,10 @@ extension CoreBluetoothPeripheralManager {
     }
 
     func handleWriteRequests(
-        _ extractedRequests: [(serviceUUID: String?, characteristicUUID: String, value: Data?, offset: Int)]
+        _ extractedRequests: [(centralID: UUID, serviceUUID: String?, characteristicUUID: String, value: Data?, offset: Int)]
     ) async {
         // Process the extracted requests
-        for (serviceUUID, characteristicUUID, value, _) in extractedRequests {
+        for (centralID, serviceUUID, characteristicUUID, value, _) in extractedRequests {
             guard let charUUID = UUID(uuidString: characteristicUUID) else { continue }
             let svcUUID = serviceUUID.flatMap(UUID.init(uuidString:)) ?? UUID()
 
@@ -261,13 +307,13 @@ extension CoreBluetoothPeripheralManager {
                     let transport = BLETransport.shared
                     if let completeData = await transport.receive(value) {
                         // We have a complete message, process it
-                        await handleRPCInvocation(data: completeData, characteristicUUID: charUUID)
+                        await handleRPCInvocation(data: completeData, characteristicUUID: charUUID, centralID: centralID)
                     }
                     // If nil, packet is part of a larger message, wait for more
                 } else {
                     // Regular characteristic write
                     await eventChannel.send(.writeRequestReceived(
-                        UUID(),  // We don't have central ID here
+                        centralID,  // Real central identifier from CBCentral
                         svcUUID,
                         charUUID,
                         value
@@ -277,15 +323,15 @@ extension CoreBluetoothPeripheralManager {
         }
     }
 
-    private func handleRPCInvocation(data: Data, characteristicUUID: UUID) async {
+    private func handleRPCInvocation(data: Data, characteristicUUID: UUID, centralID: UUID) async {
         // Emit write event to EventBridge for RPC processing
         // EventBridge has the correct BLEActorSystem instance registered via setRPCRequestHandler()
         // This maintains proper separation of concerns and instance isolation
         await eventChannel.send(.writeRequestReceived(
-            UUID(),  // central ID (CoreBluetooth limitation - unavailable in peripheral role)
-            UUID(),  // service UUID (would need to be tracked separately)
+            centralID,           // Real central identifier from CBCentral
+            UUID(),              // service UUID (would need to be tracked separately)
             characteristicUUID,
-            data     // Complete RPC data (already reassembled from fragments by BLETransport)
+            data                 // Complete RPC data (already reassembled from fragments by BLETransport)
         ))
     }
 
@@ -300,22 +346,40 @@ extension CoreBluetoothPeripheralManager {
         }
 
         let svcUUID = serviceUUID.flatMap(UUID.init(uuidString:)) ?? UUID()
+        let centralID = central.identifier  // Extract real central identifier
 
         if subscribed {
             var centrals = subscribedCentrals[charUUID] ?? []
             centrals.insert(central)
             subscribedCentrals[charUUID] = centrals
 
+            var centralIDs = subscribedCentralIDs[charUUID] ?? []
+            centralIDs.insert(centralID)
+            subscribedCentralIDs[charUUID] = centralIDs
+
+            // CRITICAL: Update MTU for this central in BLETransport
+            // This enables optimal packet fragmentation for responses to this central
+            let maxUpdateValueLength = central.maximumUpdateValueLength
+            let transport = BLETransport.shared
+            await transport.updateMaxPayloadSize(for: centralID, maxWriteLength: maxUpdateValueLength)
+
+            BleuLogger.peripheral.debug("Updated MTU for central \(centralID): \(maxUpdateValueLength) bytes")
+
             await eventChannel.send(.centralSubscribed(
-                UUID(),  // We don't have central ID - this is a limitation of CoreBluetooth
+                centralID,  // Real central identifier from CBCentral
                 svcUUID,
                 charUUID
             ))
         } else {
             subscribedCentrals[charUUID]?.remove(central)
+            subscribedCentralIDs[charUUID]?.remove(centralID)
+
+            // Clean up MTU entry when central disconnects
+            let transport = BLETransport.shared
+            await transport.removeMTU(for: centralID)
 
             await eventChannel.send(.centralUnsubscribed(
-                UUID(),  // We don't have central ID - this is a limitation of CoreBluetooth
+                centralID,  // Real central identifier from CBCentral
                 svcUUID,
                 charUUID
             ))
@@ -357,6 +421,7 @@ fileprivate final class CoreBluetoothPeripheralManagerDelegateProxy: NSObject, C
     public func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveRead request: CBATTRequest) {
         // Extract necessary data before Task
         let characteristicUUID = request.characteristic.uuid
+        let centralID = request.central.identifier  // Extract real central identifier
 
         // Handle the response in the delegate to avoid passing non-Sendable objects
         Task { [weak actor] in
@@ -379,6 +444,7 @@ fileprivate final class CoreBluetoothPeripheralManagerDelegateProxy: NSObject, C
             let charUUIDString = characteristicUUID.uuidString
             let serviceUUIDString = request.characteristic.service?.uuid.uuidString
             await actor?.trackReadRequest(
+                centralID: centralID,
                 characteristicUUID: charUUIDString,
                 serviceUUID: serviceUUIDString
             )
@@ -387,9 +453,11 @@ fileprivate final class CoreBluetoothPeripheralManagerDelegateProxy: NSObject, C
 
     public func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {
         // Extract data from requests to avoid Sendable issues
-        let extractedRequests: [(serviceUUID: String?, characteristicUUID: String, value: Data?, offset: Int)] =
+        // CRITICAL: Extract central.identifier for proper multi-client RPC support
+        let extractedRequests: [(centralID: UUID, serviceUUID: String?, characteristicUUID: String, value: Data?, offset: Int)] =
             requests.map { request in
                 (
+                    centralID: request.central.identifier,
                     serviceUUID: request.characteristic.service?.uuid.uuidString,
                     characteristicUUID: request.characteristic.uuid.uuidString,
                     value: request.value,
