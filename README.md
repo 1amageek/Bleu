@@ -420,14 +420,18 @@ Tests/BleuTests/
 ├── Integration/                   # Mock-based integration tests
 │   ├── MockActorSystemTests.swift # Mock manager tests
 │   ├── FullWorkflowTests.swift    # Complete workflows
-│   └── ErrorHandlingTests.swift   # Error scenarios
+│   ├── ErrorHandlingTests.swift   # Error scenarios
+│   └── MinimalEmulatorTest.swift  # CoreBluetoothEmulator tests
 │
 ├── Hardware/                      # Real BLE hardware tests
 │   └── RealBLETests.swift         # Requires real hardware
 │
 └── Mocks/                         # Test utilities
     ├── TestHelpers.swift          # Common test helpers
-    └── MockActorExamples.swift    # Example distributed actors
+    ├── MockActorExamples.swift    # Example distributed actors
+    └── Emulator/                  # CoreBluetoothEmulator adapters
+        ├── EmulatedBLECentralManager.swift    # Emulator central adapter
+        └── EmulatedBLEPeripheralManager.swift # Emulator peripheral adapter
 ```
 
 ### Running Tests
@@ -593,6 +597,110 @@ let count = try await counter.increment() // Returns 1
 let errorActor = ErrorThrowingActor(actorSystem: system)
 try await errorActor.alwaysThrows() // Throws TestError
 ```
+
+### CoreBluetoothEmulator Integration
+
+Bleu integrates with [CoreBluetoothEmulator](https://github.com/1amageek/CoreBluetoothEmulator) for full-fidelity BLE testing without hardware. This provides realistic BLE behavior including MTU negotiation, packet fragmentation, and connection management.
+
+#### Features
+
+- ✅ **Full BLE Emulation**: Complete EmulatorBus routing between central and peripheral
+- ✅ **No Hardware Required**: Tests run on CI/CD without real Bluetooth devices
+- ✅ **Instant Execution**: `.instant` configuration for fast unit tests
+- ✅ **Realistic Timing**: `.default`, `.slow`, `.unreliable` configurations for integration tests
+- ✅ **Event-Driven Architecture**: Proper async/await flow with delegate callbacks
+
+#### Quick Start
+
+```swift
+import Testing
+import CoreBluetoothEmulator
+@testable import Bleu
+
+@Test("Full BLE connection flow")
+func testEmulatorConnection() async throws {
+    // Configure EmulatorBus for fast testing
+    await EmulatorBus.shared.reset()
+    await EmulatorBus.shared.configure(.instant)
+
+    // Create peripheral with emulator
+    var peripheralConfig = EmulatedBLEPeripheralManager.Configuration()
+    peripheralConfig.emulatorPreset = .instant
+    let peripheral = EmulatedBLEPeripheralManager(configuration: peripheralConfig)
+    await peripheral.initialize()
+    _ = await peripheral.waitForPoweredOn()
+
+    // Add service and start advertising
+    let service = ServiceMetadata(
+        uuid: serviceUUID,
+        isPrimary: true,
+        characteristics: [
+            CharacteristicMetadata(
+                uuid: charUUID,
+                properties: [.read, .notify],
+                permissions: [.readable]
+            )
+        ]
+    )
+    try await peripheral.add(service)
+    try await peripheral.startAdvertising(
+        AdvertisementData(localName: "TestDevice", serviceUUIDs: [serviceUUID])
+    )
+
+    // Create central and scan
+    var centralConfig = EmulatedBLECentralManager.Configuration()
+    centralConfig.emulatorPreset = .instant
+    let central = EmulatedBLECentralManager(configuration: centralConfig)
+    await central.initialize()
+    _ = await central.waitForPoweredOn()
+
+    // Discover and connect
+    var discoveredID: UUID?
+    for await discovered in central.scanForPeripherals(
+        withServices: [serviceUUID],
+        timeout: 1.0
+    ) {
+        discoveredID = discovered.id
+        break
+    }
+
+    try await central.connect(to: discoveredID!, timeout: 2.0)
+    // Test passes in 0.001 seconds!
+}
+```
+
+#### Emulator Configurations
+
+```swift
+// Instant - for fast unit tests (no delays)
+peripheralConfig.emulatorPreset = .instant
+
+// Default - realistic timing for development
+peripheralConfig.emulatorPreset = .default
+
+// Slow - poor connection simulation
+peripheralConfig.emulatorPreset = .slow
+
+// Unreliable - error and failure simulation
+peripheralConfig.emulatorPreset = .unreliable
+
+// Custom configuration
+var config = EmulatorConfiguration.default
+config.stateUpdateDelay = 0.01
+config.advertisingDelay = 0.05
+peripheralConfig.customEmulatorConfig = config
+```
+
+#### Architecture
+
+The emulator adapters (`EmulatedBLECentralManager` and `EmulatedBLEPeripheralManager`) implement Bleu's manager protocols and bridge CoreBluetoothEmulator's delegate-based API to Bleu's async/await actor-based API:
+
+- **Delegate → AsyncStream**: Converts CBCentralManagerDelegate/CBPeripheralManagerDelegate callbacks to AsyncStream events
+- **Event-Driven**: Uses continuation-based waiting instead of polling or delays
+- **EmulatorBus Routing**: Proper event routing between managers via shared bus
+- **Full Protocol Conformance**: Implements `BLECentralManagerProtocol` and `BLEPeripheralManagerProtocol`
+
+See `Tests/BleuTests/Integration/MinimalEmulatorTest.swift` for complete examples.
 
 ### Mock System Configuration
 
