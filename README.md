@@ -10,6 +10,8 @@
   [![Swift Package Manager](https://img.shields.io/badge/SPM-Compatible-brightgreen.svg)](https://swift.org/package-manager/)
   [![Test](https://github.com/1amageek/Bleu/actions/workflows/test.yml/badge.svg)](https://github.com/1amageek/Bleu/actions/workflows/test.yml)
   [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+  <iframe src="https://github.com/sponsors/1amageek/button" title="Sponsor 1amageek" height="32" width="114" style="border: 0; border-radius: 6px;"></iframe>
 </div>
 
 ---
@@ -808,6 +810,8 @@ Bleu is available under the MIT license. See the [LICENSE](LICENSE) file for mor
 ---
 
 <div align="center">
+  <iframe src="https://github.com/sponsors/1amageek/button" title="Sponsor 1amageek" height="32" width="114" style="border: 0; border-radius: 6px;"></iframe>
+
   Made with ❤️ by <a href="https://x.com/1amageek">@1amageek</a>
 
   [Documentation](docs/) • [Issues](https://github.com/1amageek/Bleu/issues) • [Discussions](https://github.com/1amageek/Bleu/discussions)
