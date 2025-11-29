@@ -200,6 +200,7 @@ public enum BLEEvent: Sendable {
     case centralUnsubscribed(UUID, UUID, UUID)
     case readRequestReceived(UUID, UUID, UUID)
     case writeRequestReceived(UUID, UUID, UUID, Data)
+    case advertisingStarted(Error?)
 }
 
 /// Connection options

@@ -13,8 +13,9 @@ import CoreBluetoothEmulator
 /// This demonstrates the real-world scenario where:
 /// - Process A (iPhone): Peripheral actor (SensorActor)
 /// - Process B (Watch): Central discovers and calls RPC methods
-@Suite("Multi-Process Emulator Tests", .serialized)
-struct MultiProcessEmulatorTests {
+extension EmulatorBusTests {
+    @Suite("Multi-Process Emulator Tests")
+    struct MultiProcessEmulatorTests {
 
     /// Test that transport layer can route events between processes
     @Test("Complete RPC flow across emulator transport")
@@ -266,4 +267,5 @@ struct MultiProcessEmulatorTests {
     //
     // This is integration testing territory, not unit testing.
 
+}
 }

@@ -675,7 +675,7 @@ public actor MockCentralManager: BLECentralManagerProtocol {
             // Default: always ready (backward compatible)
             return true
 
-        case .realistic(let queueSize):
+        case .realistic(_):
             // Realistic: check queue state
             // Initially true, becomes false after queueSize writes
             let isReady = writeQueueReady[peripheralID] ?? true

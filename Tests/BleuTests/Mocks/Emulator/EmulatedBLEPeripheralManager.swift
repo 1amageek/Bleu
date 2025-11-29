@@ -178,10 +178,18 @@ public actor EmulatedBLEPeripheralManager: BLEPeripheralManagerProtocol {
             advertisementData[CBAdvertisementDataServiceUUIDsKey] = cbUUIDs
         }
 
-        // Start advertising (fire-and-forget like real CoreBluetooth)
-        // The delegate callback peripheralManagerDidStartAdvertising will
-        // set _isAdvertising = true asynchronously
+        // Start advertising
         peripheralManager.startAdvertising(advertisementData)
+
+        // Wait for peripheralManagerDidStartAdvertising callback
+        for await event in eventChannel.stream {
+            if case .advertisingStarted(let error) = event {
+                if let error = error {
+                    throw error
+                }
+                return
+            }
+        }
     }
 
     public func stopAdvertising() async {
@@ -209,14 +217,11 @@ public actor EmulatedBLEPeripheralManager: BLEPeripheralManagerProtocol {
             throw BleuError.characteristicNotFound(characteristicUUID)
         }
 
-        // Convert central UUIDs to EmulatedCBCentral objects if specified
-        var emulatedCentrals: [EmulatedCBCentral]? = nil
-        if let centralUUIDs = centrals {
-            // Note: In the emulator, we don't have direct access to EmulatedCBCentral objects
-            // The emulator will handle routing based on subscriptions
-            // For now, we'll pass nil and let the emulator route to all subscribed centrals
-            emulatedCentrals = nil
-        }
+        // Note: In the emulator, we don't have direct access to EmulatedCBCentral objects
+        // The emulator will handle routing based on subscriptions
+        // For now, we'll pass nil and let the emulator route to all subscribed centrals
+        let emulatedCentrals: [EmulatedCBCentral]? = nil
+        _ = centrals  // Acknowledge parameter (not used in emulator)
 
         // Update the value
         let success = peripheralManager.updateValue(data, for: characteristic, onSubscribedCentrals: emulatedCentrals)
@@ -281,6 +286,7 @@ private class DelegateBridge: NSObject, EmulatedCBPeripheralManagerDelegate, @un
             if error == nil {
                 await manager?.setAdvertising(true)
             }
+            await eventChannel.send(.advertisingStarted(error))
         }
     }
 

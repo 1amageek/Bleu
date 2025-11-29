@@ -4,9 +4,14 @@ import CoreBluetooth
 import CoreBluetoothEmulator
 @testable import Bleu
 
-/// Minimal test to debug emulator initialization
-@Suite("Minimal Emulator Test", .serialized)
-struct MinimalEmulatorTest {
+/// Parent suite for all EmulatorBus tests - ensures serial execution
+@Suite("EmulatorBus Tests", .serialized)
+enum EmulatorBusTests {}
+
+extension EmulatorBusTests {
+    /// Minimal test to debug emulator initialization
+    @Suite("Minimal Emulator Test")
+    struct MinimalEmulatorTest {
 
     @Test("Just initialize peripheral manager")
     func testPeripheralInitialization() async throws {
@@ -41,15 +46,12 @@ struct MinimalEmulatorTest {
     func testFullConnection() async throws {
         print("=== Test started ===")
 
-        // Setup
+        // Setup - use unique UUIDs to avoid interference with other tests
         let serviceUUID = UUID()
         let charUUID = UUID()
+        let peripheralName = "TestPeripheral-\(UUID().uuidString.prefix(8))"
 
-        // Reset and wait for cleanup
-        await EmulatorBus.shared.reset()
-        try await Task.sleep(nanoseconds: 50_000_000) // 50ms for cleanup
-        print("Bus reset complete")
-
+        // Configure bus (don't reset to avoid interfering with parallel tests)
         await EmulatorBus.shared.configure(.instant)
         print("Bus configured")
 
@@ -85,14 +87,11 @@ struct MinimalEmulatorTest {
         // Start advertising
         print("--- Starting advertising ---")
         let advData = AdvertisementData(
-            localName: "TestPeripheral",
+            localName: peripheralName,
             serviceUUIDs: [serviceUUID]
         )
         try await peripheral.startAdvertising(advData)
-        print("Advertising started")
-
-        // Wait a bit for advertising to be fully set up
-        try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+        print("Advertising started with name: \(peripheralName)")
 
         // Create central
         print("--- Creating central ---")
@@ -107,15 +106,15 @@ struct MinimalEmulatorTest {
         _ = await central.waitForPoweredOn()
         print("Central powered on")
 
-        // Scan for peripheral with longer timeout
+        // Scan for peripheral
         print("--- Scanning for peripheral ---")
         var discoveredID: UUID?
         for await discovered in central.scanForPeripherals(
             withServices: [serviceUUID],
-            timeout: 3.0  // Increased timeout to handle multiple peripherals
+            timeout: 3.0
         ) {
             print("Discovered: \(discovered.name ?? "unknown") with ID: \(discovered.id)")
-            if discovered.name == "TestPeripheral" {
+            if discovered.name == peripheralName {
                 discoveredID = discovered.id
                 break
             }
@@ -135,4 +134,5 @@ struct MinimalEmulatorTest {
 
         print("=== Test complete ===")
     }
+}
 }
