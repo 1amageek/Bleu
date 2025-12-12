@@ -71,7 +71,7 @@ public actor EmulatedBLECentralManager: BLECentralManagerProtocol {
 
     public struct Configuration: Sendable {
         /// Initial Bluetooth state
-        public var initialState: CBManagerState = .poweredOn
+        public var initialState: CBManagerState = .unknown
 
         /// Emulator configuration preset
         public var emulatorPreset: EmulatorPreset = .instant
@@ -142,8 +142,9 @@ public actor EmulatedBLECentralManager: BLECentralManagerProtocol {
     }
 
     public func waitForPoweredOn() async -> CBManagerState {
-        // Check if already powered on
-        if _state == .poweredOn {
+        // Prefer the underlying manager state when available.
+        if centralManager?.state == .poweredOn {
+            _state = .poweredOn
             return .poweredOn
         }
 
@@ -172,7 +173,10 @@ public actor EmulatedBLECentralManager: BLECentralManagerProtocol {
                 let cbUUIDs = serviceUUIDs.isEmpty ? nil : serviceUUIDs.map { CBUUID(nsuuid: $0) }
 
                 // Start scanning
-                centralManager?.scanForPeripherals(withServices: cbUUIDs, options: nil)
+                centralManager?.scanForPeripherals(
+                    withServices: cbUUIDs,
+                    options: [CBCentralManagerScanOptionAllowDuplicatesKey: true]
+                )
 
                 // Create a separate task to listen for discovery events
                 let eventTask = Task {

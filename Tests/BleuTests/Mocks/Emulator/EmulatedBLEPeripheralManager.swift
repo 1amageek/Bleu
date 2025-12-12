@@ -28,6 +28,12 @@ public actor EmulatedBLEPeripheralManager: BLEPeripheralManagerProtocol {
     /// Track if currently advertising
     private var _isAdvertising: Bool = false
 
+    /// Continuation for startAdvertising completion
+    private var advertisingContinuation: CheckedContinuation<Void, Error>?
+
+    /// Timeout task for startAdvertising
+    private var advertisingTimeoutTask: Task<Void, Never>?
+
     /// Track added services (UUID -> EmulatedCBMutableService)
     private var addedServices: [UUID: EmulatedCBMutableService] = [:]
 
@@ -44,7 +50,7 @@ public actor EmulatedBLEPeripheralManager: BLEPeripheralManagerProtocol {
 
     public struct Configuration: Sendable {
         /// Initial Bluetooth state
-        public var initialState: CBManagerState = .poweredOn
+        public var initialState: CBManagerState = .unknown
 
         /// Emulator configuration preset
         public var emulatorPreset: EmulatorPreset = .instant
@@ -54,6 +60,9 @@ public actor EmulatedBLEPeripheralManager: BLEPeripheralManagerProtocol {
 
         /// Queue for delegate callbacks (nil = main queue)
         public var delegateQueue: DispatchQueue? = nil
+
+        /// Timeout for startAdvertising completion (0 = no timeout)
+        public var advertisingStartTimeout: TimeInterval = 2.0
 
         public enum EmulatorPreset: Sendable {
             case instant  // No delays, fast unit testing
@@ -115,8 +124,9 @@ public actor EmulatedBLEPeripheralManager: BLEPeripheralManagerProtocol {
     }
 
     public func waitForPoweredOn() async -> CBManagerState {
-        // Check if already powered on
-        if _state == .poweredOn {
+        // Prefer the underlying manager state when available.
+        if peripheralManager?.state == .poweredOn {
+            _state = .poweredOn
             return .poweredOn
         }
 
@@ -166,6 +176,15 @@ public actor EmulatedBLEPeripheralManager: BLEPeripheralManagerProtocol {
     }
 
     public func startAdvertising(_ data: AdvertisementData) async throws {
+        guard peripheralManager != nil else {
+            throw BleuError.bluetoothUnavailable
+        }
+
+        guard advertisingContinuation == nil else {
+            // Prevent multiple concurrent startAdvertising calls from racing the continuation.
+            throw BleuError.operationNotSupported
+        }
+
         // Convert AdvertisementData to dictionary
         var advertisementData: [String: Any] = [:]
 
@@ -178,17 +197,38 @@ public actor EmulatedBLEPeripheralManager: BLEPeripheralManagerProtocol {
             advertisementData[CBAdvertisementDataServiceUUIDsKey] = cbUUIDs
         }
 
-        // Start advertising
-        peripheralManager.startAdvertising(advertisementData)
+        if let manufacturerData = data.manufacturerData {
+            advertisementData[CBAdvertisementDataManufacturerDataKey] = manufacturerData
+        }
 
-        // Wait for peripheralManagerDidStartAdvertising callback
-        for await event in eventChannel.stream {
-            if case .advertisingStarted(let error) = event {
-                if let error = error {
-                    throw error
-                }
-                return
+        if !data.serviceData.isEmpty {
+            var cbServiceData: [CBUUID: Data] = [:]
+            for (uuid, dataValue) in data.serviceData {
+                cbServiceData[CBUUID(nsuuid: uuid)] = dataValue
             }
+            advertisementData[CBAdvertisementDataServiceDataKey] = cbServiceData
+        }
+
+        if let txPowerLevel = data.txPowerLevel {
+            advertisementData[CBAdvertisementDataTxPowerLevelKey] = txPowerLevel
+        }
+
+        advertisementData[CBAdvertisementDataIsConnectable] = data.isConnectable
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            advertisingContinuation = continuation
+
+            // Fail fast instead of hanging tests if the delegate callback never arrives.
+            if config.advertisingStartTimeout > 0 {
+                let timeoutNanoseconds = UInt64(config.advertisingStartTimeout * 1_000_000_000)
+                advertisingTimeoutTask?.cancel()
+                advertisingTimeoutTask = Task { [timeoutNanoseconds] in
+                    try? await Task.sleep(nanoseconds: timeoutNanoseconds)
+                    await self.handleAdvertisingStartTimeout()
+                }
+            }
+
+            peripheralManager.startAdvertising(advertisementData)
         }
     }
 
@@ -245,6 +285,28 @@ public actor EmulatedBLEPeripheralManager: BLEPeripheralManagerProtocol {
         _isAdvertising = isAdvertising
     }
 
+    /// Complete the pending startAdvertising call (if any)
+    internal func finishAdvertisingStart(with error: Error?) {
+        advertisingTimeoutTask?.cancel()
+        advertisingTimeoutTask = nil
+
+        guard let continuation = advertisingContinuation else { return }
+        advertisingContinuation = nil
+
+        if let error = error {
+            continuation.resume(throwing: error)
+        } else {
+            continuation.resume(returning: ())
+        }
+    }
+
+    internal func handleAdvertisingStartTimeout() async {
+        // Stop advertising to avoid leaving stray peripherals in the emulator bus.
+        peripheralManager?.stopAdvertising()
+        _isAdvertising = false
+        finishAdvertisingStart(with: BleuError.connectionTimeout)
+    }
+
     /// Add subscribed central
     internal func addSubscription(central: UUID, characteristic: UUID) {
         if subscribedCentrals[characteristic] == nil {
@@ -286,6 +348,7 @@ private class DelegateBridge: NSObject, EmulatedCBPeripheralManagerDelegate, @un
             if error == nil {
                 await manager?.setAdvertising(true)
             }
+            await manager?.finishAdvertisingStart(with: error)
             await eventChannel.send(.advertisingStarted(error))
         }
     }
