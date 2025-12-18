@@ -21,9 +21,15 @@ public actor BLETransport {
     /// with different MTU values
     private var deviceMTU: [UUID: Int] = [:]
     private let defaultMTU: Int = 20  // Minimum guaranteed BLE MTU
-    
-    /// Header overhead for packet metadata (UUID:16B + sequence:2B + total:2B + checksum:4B)
-    private let headerOverhead = 24
+
+    /// Magic bytes for BLETransport packet identification ("BT" = 0x42, 0x54)
+    private let packetMagic: (UInt8, UInt8) = (0x42, 0x54)
+    /// Packet format version for future compatibility
+    private let packetVersion: UInt8 = 0x01
+
+    /// Header overhead for packet metadata
+    /// Magic(2B) + Version(1B) + UUID(16B) + Seq(2B) + Total(2B) + Checksum(4B) = 27 bytes
+    private let headerOverhead = 27
     
     /// Packet for fragmented data transmission
     public struct Packet: Codable, Sendable {
@@ -82,7 +88,6 @@ public actor BLETransport {
     
     // Transport state
     private var reassemblyBuffers: [UUID: ReassemblyBuffer] = [:]
-    private var outgoingQueue: [Packet] = []
     private var cleanupTask: Task<Void, Never>?
     private let configManager = BleuConfigurationManager.shared
     
@@ -161,42 +166,67 @@ public actor BLETransport {
     
     // MARK: - Binary Packing
     
-    /// Pack packet into binary format (24B header + payload)
+    /// Pack packet into binary format (27B header + payload)
     public func packPacket(_ packet: Packet) -> Data {
         return pack(packet)
     }
-    
-    /// Pack packet into binary format (24B header + payload)
+
+    /// Pack packet into binary format (27B header + payload)
+    /// Header: Magic(2B) + Version(1B) + UUID(16B) + Seq(2B) + Total(2B) + Checksum(4B)
     private func pack(_ packet: Packet) -> Data {
         var data = Data()
-        
+
+        // Magic bytes (2 bytes) - "BT"
+        data.append(packetMagic.0)
+        data.append(packetMagic.1)
+
+        // Version (1 byte)
+        data.append(packetVersion)
+
         // UUID (16 bytes)
         data.append(packet.id.data)
-        
+
         // Sequence number (2 bytes, big endian)
         var seq = packet.sequenceNumber.bigEndian
         data.append(withUnsafeBytes(of: &seq) { Data($0) })
-        
+
         // Total packets (2 bytes, big endian)
         var total = packet.totalPackets.bigEndian
         data.append(withUnsafeBytes(of: &total) { Data($0) })
-        
+
         // Checksum (4 bytes, big endian)
         var checksum = packet.checksum.bigEndian
         data.append(withUnsafeBytes(of: &checksum) { Data($0) })
-        
+
         // Payload
         data.append(packet.payload)
-        
+
         return data
     }
     
     /// Unpack binary data into packet
+    /// Expected format: Magic(2B) + Version(1B) + UUID(16B) + Seq(2B) + Total(2B) + Checksum(4B) + Payload
     private func unpack(_ data: Data) -> Packet? {
-        guard data.count >= 24, let id = UUID(data: data.prefix(16)) else { return nil }
-        
-        var offset = 16
-        
+        // Minimum size: header (27 bytes) + at least empty payload
+        guard data.count >= 27 else { return nil }
+
+        // Verify magic bytes
+        guard data[0] == packetMagic.0 && data[1] == packetMagic.1 else {
+            return nil
+        }
+
+        // Verify version
+        let version = data[2]
+        guard version == packetVersion else {
+            BleuLogger.transport.warning("Unsupported packet version: \(version), expected: \(packetVersion)")
+            return nil
+        }
+
+        // UUID (16 bytes at offset 3)
+        guard let id = UUID(data: data[3..<19]) else { return nil }
+
+        var offset = 19
+
         // Helper to read bytes safely without alignment issues
         func readU16() -> UInt16? {
             guard data.count >= offset + 2 else { return nil }
@@ -206,7 +236,7 @@ public actor BLETransport {
             // Big-endian: most significant byte first
             return (b0 << 8) | b1
         }
-        
+
         func readU32() -> UInt32? {
             guard data.count >= offset + 4 else { return nil }
             let b0 = UInt32(data[offset])
@@ -217,19 +247,19 @@ public actor BLETransport {
             // Big-endian: most significant byte first
             return (b0 << 24) | (b1 << 16) | (b2 << 8) | b3
         }
-        
+
         // Sequence number (2 bytes)
         guard let seq = readU16() else { return nil }
-        
+
         // Total packets (2 bytes)
         guard let total = readU16() else { return nil }
-        
+
         // Checksum (4 bytes)
         guard let checksum = readU32() else { return nil }
-        
+
         // Payload
         let payload = data.suffix(from: offset)
-        
+
         // Create packet and validate checksum
         let packet = Packet(id: id, sequenceNumber: seq, totalPackets: total, payload: payload)
         return packet.checksum == checksum ? packet : nil
@@ -293,31 +323,26 @@ public actor BLETransport {
     }
     
     /// Receive data with reassembly
+    /// - Returns: Reassembled data if complete, nil if waiting for more packets or corrupted
     public func receive(_ data: Data) async -> Data? {
-        if let packet = unpack(data) {
+        // Check if this is a BLETransport packet by looking for magic bytes
+        if data.count >= 2 && data[0] == packetMagic.0 && data[1] == packetMagic.1 {
+            // This is a BLETransport packet - must be valid or rejected
+            guard let packet = unpack(data) else {
+                BleuLogger.transport.warning("Corrupted BLETransport packet received (invalid format or checksum)")
+                return nil
+            }
             return await reassemble(packet)
         } else {
-            // If unpacking as packet fails, assume it's raw data (single packet)
+            // Raw data without magic bytes - return as-is for backward compatibility
+            BleuLogger.transport.debug("Received raw data (non-BLETransport format, \(data.count) bytes)")
             return data
         }
     }
-    
-    /// Queue data for transmission for a specific device
-    public func queueForTransmission(_ data: Data, for deviceID: UUID) async {
-        let packets = fragment(data, for: deviceID)
-        outgoingQueue.append(contentsOf: packets)
-    }
-    
-    /// Get next packet from queue
-    public func dequeuePacket() async -> Packet? {
-        guard !outgoingQueue.isEmpty else { return nil }
-        return outgoingQueue.removeFirst()
-    }
-    
+
     /// Clear all buffers
     public func clear() {
         reassemblyBuffers.removeAll()
-        outgoingQueue.removeAll()
     }
     
     /// Cleanup timed-out reassembly buffers
@@ -360,7 +385,6 @@ public actor BLETransport {
     public func statistics() -> TransportStatistics {
         return TransportStatistics(
             activeReassemblyBuffers: reassemblyBuffers.count,
-            queuedPackets: outgoingQueue.count,
             connectedDevices: deviceMTU.count
         )
     }
@@ -379,7 +403,6 @@ public actor BLETransport {
 /// Transport statistics
 public struct TransportStatistics: Sendable {
     public let activeReassemblyBuffers: Int
-    public let queuedPackets: Int
     public let connectedDevices: Int
 }
 

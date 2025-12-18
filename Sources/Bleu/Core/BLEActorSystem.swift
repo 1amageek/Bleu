@@ -47,7 +47,38 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         private var peripheralCalls: [UUID: Set<String>] = [:]  // Track which calls belong to which peripheral
         private var callIDToPeripheral: [String: UUID] = [:]  // Reverse mapping for O(1) lookup
         private var pendingCallsQueue: [UUID: [String]] = [:]  // FIFO queue of pending calls per peripheral for ATT error handling
-        private var cancelledCalls: [String: Error] = [:]  // Track calls cancelled before continuation was stored (timeout race fix)
+
+        /// Track calls cancelled before continuation was stored (timeout race fix)
+        /// Includes timestamp for TTL-based cleanup to prevent memory leaks
+        private var cancelledCalls: [String: (error: Error, timestamp: Date)] = [:]
+        private let cancelledCallsTTL: TimeInterval = 30.0  // 30 seconds TTL
+        private var cleanupTask: Task<Void, Never>?
+
+        init() {
+            // Start cleanup task asynchronously
+            Task { await self.startCleanupTask() }
+        }
+
+        private func startCleanupTask() {
+            cleanupTask = Task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 10_000_000_000)  // 10 seconds
+                    self.cleanupStaleCancelledCalls()
+                }
+            }
+        }
+
+        private func cleanupStaleCancelledCalls() {
+            let now = Date()
+            let staleIDs = cancelledCalls.filter {
+                now.timeIntervalSince($0.value.timestamp) >= cancelledCallsTTL
+            }.keys
+
+            for callID in staleIDs {
+                cancelledCalls.removeValue(forKey: callID)
+                BleuLogger.actorSystem.debug("Cleaned up stale cancelled call: \(callID)")
+            }
+        }
 
         func get(_ id: UUID) -> PeripheralActorProxy? {
             return peripheralProxies[id]
@@ -69,9 +100,9 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         func storePendingCall(_ callID: String, for peripheralID: UUID, continuation: CheckedContinuation<Data, Error>) {
             // CRITICAL RACE FIX: Check if this call was already cancelled (e.g., by timeout)
             // This can happen when timeout fires BEFORE the Task{} in withCheckedThrowingContinuation executes
-            if let error = cancelledCalls.removeValue(forKey: callID) {
+            if let entry = cancelledCalls.removeValue(forKey: callID) {
                 // Call was already cancelled - immediately resume with the error
-                continuation.resume(throwing: error)
+                continuation.resume(throwing: entry.error)
                 return
             }
 
@@ -126,8 +157,9 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
                 }
             } else {
                 // CRITICAL RACE FIX: Continuation not yet stored (timeout won race)
-                // Store the error so storePendingCall can handle it when it arrives
-                cancelledCalls[callID] = error
+                // Store the error with timestamp so storePendingCall can handle it when it arrives
+                // TTL-based cleanup prevents memory leaks if storePendingCall is never called
+                cancelledCalls[callID] = (error: error, timestamp: Date())
 
                 // Also remove from FIFO queue
                 if let peripheralID = callIDToPeripheral.removeValue(forKey: callID) {
@@ -339,9 +371,35 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
 
     // MARK: - Factory Methods
 
+    /// Create production instance with real CoreBluetooth (async version - recommended)
+    /// - Note: Requires Bluetooth permissions (TCC)
+    /// - Warning: Will trigger TCC permission check on iOS/macOS
+    /// - Returns: BLEActorSystem guaranteed to be ready for use
+    public static func create() async -> BLEActorSystem {
+        let peripheral = CoreBluetoothPeripheralManager()
+        let central = CoreBluetoothCentralManager()
+
+        // Initialize managers and wait for completion
+        await peripheral.initialize()  // TCC check happens here
+        await central.initialize()     // TCC check happens here
+
+        let system = BLEActorSystem(
+            peripheralManager: peripheral,
+            centralManager: central
+        )
+
+        // Wait for system to be ready
+        while await !system.ready {
+            try? await Task.sleep(nanoseconds: 50_000_000)  // 50ms
+        }
+
+        return system
+    }
+
     /// Create production instance with real CoreBluetooth
     /// - Note: Requires Bluetooth permissions (TCC)
     /// - Warning: Will trigger TCC permission check on iOS/macOS
+    /// - Warning: System may not be ready immediately. Check `ready` property or use `create()` instead.
     public static func production() -> BLEActorSystem {
         let peripheral = CoreBluetoothPeripheralManager()
         let central = CoreBluetoothCentralManager()
@@ -460,7 +518,10 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
                 handler: handler
             )
 
-            return try capturedResult!.get()
+            guard let result = capturedResult else {
+                throw BleuError.rpcFailed("No result captured from distributed target execution")
+            }
+            return try result.get()
         }
 
         // Cross-process execution (real BLE transport)
