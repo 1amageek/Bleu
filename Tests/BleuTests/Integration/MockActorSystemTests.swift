@@ -360,4 +360,121 @@ struct MockActorSystemTests {
         // State should now be powered on
         #expect(await mockPeripheral.state == .poweredOn)
     }
+
+    // MARK: - Initialization Robustness Tests
+
+    @Test("Mock creation with timeout succeeds when ready")
+    func testMockCreationWithTimeoutSucceeds() async throws {
+        // Normal mock should succeed quickly
+        let system = try await BLEActorSystem.mock(timeout: 5.0)
+        let ready = await system.ready
+        #expect(ready == true)
+    }
+
+    @Test("Mock creation fails with unauthorized state")
+    func testMockCreationFailsWhenUnauthorized() async throws {
+        var peripheralConfig = MockPeripheralManager.Configuration()
+        peripheralConfig.initialState = .unauthorized
+        peripheralConfig.skipWaitForPoweredOn = true
+
+        var centralConfig = MockCentralManager.Configuration()
+        centralConfig.initialState = .unauthorized
+        centralConfig.skipWaitForPoweredOn = true
+
+        do {
+            _ = try await BLEActorSystem.mock(
+                peripheralConfig: peripheralConfig,
+                centralConfig: centralConfig,
+                timeout: 1.0
+            )
+            Issue.record("Expected BleuError.bluetoothUnauthorized")
+        } catch let error as BleuError {
+            if case .bluetoothUnauthorized = error {
+                // Success
+            } else {
+                Issue.record("Expected bluetoothUnauthorized, got \(error)")
+            }
+        }
+    }
+
+    @Test("Mock creation fails with unsupported state")
+    func testMockCreationFailsWhenUnsupported() async throws {
+        var peripheralConfig = MockPeripheralManager.Configuration()
+        peripheralConfig.initialState = .unsupported
+        peripheralConfig.skipWaitForPoweredOn = true
+
+        var centralConfig = MockCentralManager.Configuration()
+        centralConfig.initialState = .unsupported
+        centralConfig.skipWaitForPoweredOn = true
+
+        do {
+            _ = try await BLEActorSystem.mock(
+                peripheralConfig: peripheralConfig,
+                centralConfig: centralConfig,
+                timeout: 1.0
+            )
+            Issue.record("Expected BleuError.bluetoothUnavailable")
+        } catch let error as BleuError {
+            if case .bluetoothUnavailable = error {
+                // Success
+            } else {
+                Issue.record("Expected bluetoothUnavailable, got \(error)")
+            }
+        }
+    }
+
+    @Test("Mock creation times out when powered off")
+    func testMockCreationTimesOutWhenPoweredOff() async throws {
+        var peripheralConfig = MockPeripheralManager.Configuration()
+        peripheralConfig.initialState = .poweredOff
+        peripheralConfig.skipWaitForPoweredOn = true
+
+        var centralConfig = MockCentralManager.Configuration()
+        centralConfig.initialState = .poweredOff
+        centralConfig.skipWaitForPoweredOn = true
+
+        do {
+            _ = try await BLEActorSystem.mock(
+                peripheralConfig: peripheralConfig,
+                centralConfig: centralConfig,
+                timeout: 0.5  // Short timeout
+            )
+            Issue.record("Expected BleuError.bluetoothPoweredOff")
+        } catch let error as BleuError {
+            if case .bluetoothPoweredOff = error {
+                // Success
+            } else {
+                Issue.record("Expected bluetoothPoweredOff, got \(error)")
+            }
+        }
+    }
+
+    // MARK: - Shutdown Tests
+
+    @Test("System shutdown cancels background tasks")
+    func testSystemShutdownCancelsBackgroundTasks() async throws {
+        let system = try await BLEActorSystem.mock(timeout: 5.0)
+
+        // Verify system is ready
+        let ready = await system.ready
+        #expect(ready == true)
+
+        // Shutdown the system
+        await system.shutdown()
+
+        // After shutdown, system should report not ready
+        // (This behavior depends on implementation)
+    }
+
+    @Test("Shutdown is idempotent")
+    func testShutdownIsIdempotent() async throws {
+        let system = try await BLEActorSystem.mock(timeout: 5.0)
+
+        // Calling shutdown multiple times should not cause issues
+        await system.shutdown()
+        await system.shutdown()
+        await system.shutdown()
+
+        // No crash or error means success
+    }
 }

@@ -322,22 +322,73 @@ public actor BLETransport {
         }
     }
     
+    /// Legacy packet header size (v0 format without magic bytes)
+    private let legacyHeaderSize = 24
+
     /// Receive data with reassembly
-    /// - Returns: Reassembled data if complete, nil if waiting for more packets or corrupted
+    /// - Returns: Reassembled data if complete, nil if waiting for more packets or invalid
     public func receive(_ data: Data) async -> Data? {
-        // Check if this is a BLETransport packet by looking for magic bytes
+        // Case 1: New format with magic bytes
         if data.count >= 2 && data[0] == packetMagic.0 && data[1] == packetMagic.1 {
-            // This is a BLETransport packet - must be valid or rejected
             guard let packet = unpack(data) else {
                 BleuLogger.transport.warning("Corrupted BLETransport packet received (invalid format or checksum)")
                 return nil
             }
             return await reassemble(packet)
-        } else {
-            // Raw data without magic bytes - return as-is for backward compatibility
-            BleuLogger.transport.debug("Received raw data (non-BLETransport format, \(data.count) bytes)")
-            return data
         }
+
+        // Case 2: Potential legacy format detection
+        // Legacy packets start with UUID (16 bytes) which is unlikely to start with "BT" (0x42, 0x54)
+        if data.count >= legacyHeaderSize {
+            if unpackLegacy(data) != nil {
+                BleuLogger.transport.error("Received legacy format packet (v0). This version is incompatible. Please upgrade the sending device to use BLETransport v1.")
+                // Reject legacy packets - do not process
+                return nil
+            }
+        }
+
+        // Case 3: Raw data (JSON payloads, etc.)
+        BleuLogger.transport.debug("Received raw data (\(data.count) bytes)")
+        return data
+    }
+
+    /// Attempt to unpack legacy format (for detection only, not processing)
+    /// Legacy format: UUID(16B) + Seq(2B) + Total(2B) + Checksum(4B) + Payload
+    private func unpackLegacy(_ data: Data) -> Packet? {
+        guard data.count >= legacyHeaderSize else { return nil }
+
+        // Try to parse as legacy format
+        guard let id = UUID(data: data.prefix(16)) else { return nil }
+
+        var offset = 16
+
+        func readU16() -> UInt16? {
+            guard data.count >= offset + 2 else { return nil }
+            let b0 = UInt16(data[offset])
+            let b1 = UInt16(data[offset + 1])
+            offset += 2
+            return (b0 << 8) | b1
+        }
+
+        func readU32() -> UInt32? {
+            guard data.count >= offset + 4 else { return nil }
+            let b0 = UInt32(data[offset])
+            let b1 = UInt32(data[offset + 1])
+            let b2 = UInt32(data[offset + 2])
+            let b3 = UInt32(data[offset + 3])
+            offset += 4
+            return (b0 << 24) | (b1 << 16) | (b2 << 8) | b3
+        }
+
+        guard let seq = readU16(),
+              let total = readU16(),
+              let checksum = readU32() else { return nil }
+
+        let payload = data.suffix(from: offset)
+        let packet = Packet(id: id, sequenceNumber: seq, totalPackets: total, payload: payload)
+
+        // Only return if checksum matches (confirms it's actually a legacy packet)
+        return packet.checksum == checksum ? packet : nil
     }
 
     /// Clear all buffers

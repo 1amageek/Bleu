@@ -216,6 +216,22 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
             // CONCURRENT RPC FIX: Clean up FIFO queue
             pendingCallsQueue.removeValue(forKey: peripheralID)
         }
+
+        /// Shutdown ProxyManager and cancel all background tasks
+        /// This method is idempotent and safe to call multiple times
+        func shutdown() {
+            // Cancel cleanup task
+            cleanupTask?.cancel()
+            cleanupTask = nil
+
+            // Clear all state
+            cancelledCalls.removeAll()
+            peripheralProxies.removeAll()
+            pendingCallsQueue.removeAll()
+
+            // Note: We don't cancel pending calls here - they will timeout naturally
+            // or be cancelled by the caller if needed
+        }
     }
     
     private let proxyManager = ProxyManager()
@@ -226,6 +242,20 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         get async {
             await bootstrap.isReady
         }
+    }
+
+    /// Shutdown the actor system and release all resources
+    ///
+    /// This method:
+    /// - Cancels all background cleanup tasks
+    /// - Clears internal state (proxies, pending calls)
+    /// - Does NOT disconnect active BLE connections (caller should do this explicitly if needed)
+    ///
+    /// This method is idempotent and safe to call multiple times.
+    /// After shutdown, the system should not be used for new operations.
+    public func shutdown() async {
+        await proxyManager.shutdown()
+        BleuLogger.actorSystem.info("BLEActorSystem shutdown complete")
     }
 
     // MARK: - Initialization (Internal with DI)
@@ -372,10 +402,12 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
     // MARK: - Factory Methods
 
     /// Create production instance with real CoreBluetooth (async version - recommended)
+    /// - Parameter timeout: Maximum time to wait for Bluetooth to be ready (default: 30s)
+    /// - Returns: BLEActorSystem guaranteed to be ready for use
+    /// - Throws: BleuError if Bluetooth state prevents initialization
     /// - Note: Requires Bluetooth permissions (TCC)
     /// - Warning: Will trigger TCC permission check on iOS/macOS
-    /// - Returns: BLEActorSystem guaranteed to be ready for use
-    public static func create() async -> BLEActorSystem {
+    public static func create(timeout: TimeInterval = 30.0) async throws -> BLEActorSystem {
         let peripheral = CoreBluetoothPeripheralManager()
         let central = CoreBluetoothCentralManager()
 
@@ -388,12 +420,62 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
             centralManager: central
         )
 
-        // Wait for system to be ready
-        while await !system.ready {
-            try? await Task.sleep(nanoseconds: 50_000_000)  // 50ms
-        }
+        // Wait for system to be ready with proper error handling
+        try await waitForReady(
+            system: system,
+            peripheralManager: peripheral,
+            centralManager: central,
+            timeout: timeout
+        )
 
         return system
+    }
+
+    /// Wait for BLEActorSystem to be ready with proper error handling
+    /// - Parameters:
+    ///   - system: The BLEActorSystem to wait for
+    ///   - peripheralManager: Peripheral manager to check state
+    ///   - centralManager: Central manager to check state
+    ///   - timeout: Maximum time to wait
+    /// - Throws: BleuError if Bluetooth state prevents initialization
+    private static func waitForReady(
+        system: BLEActorSystem,
+        peripheralManager: BLEPeripheralManagerProtocol,
+        centralManager: BLECentralManagerProtocol,
+        timeout: TimeInterval
+    ) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        let checkInterval: UInt64 = 50_000_000  // 50ms
+
+        while true {
+            // Check if ready
+            if await system.ready {
+                return
+            }
+
+            // Get current states
+            let peripheralState = await peripheralManager.state
+            let centralState = await centralManager.state
+
+            // Check for unrecoverable states (fail fast)
+            if peripheralState == .unsupported || centralState == .unsupported {
+                throw BleuError.bluetoothUnavailable
+            }
+
+            if peripheralState == .unauthorized || centralState == .unauthorized {
+                throw BleuError.bluetoothUnauthorized
+            }
+
+            // Check timeout
+            if Date() > deadline {
+                if peripheralState == .poweredOff || centralState == .poweredOff {
+                    throw BleuError.bluetoothPoweredOff
+                }
+                throw BleuError.connectionTimeout
+            }
+
+            try? await Task.sleep(nanoseconds: checkInterval)
+        }
     }
 
     /// Create production instance with real CoreBluetooth

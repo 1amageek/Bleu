@@ -141,4 +141,74 @@ struct TransportLayerTests {
         // Should be rejected as corrupted packet (has magic bytes but invalid format)
         #expect(result == nil, "Invalid packet with magic bytes should be rejected")
     }
+
+    // MARK: - Legacy Packet Detection Tests
+
+    @Test("Legacy packet format is detected and rejected")
+    func testLegacyPacketDetectionAndRejection() async throws {
+        let transport = BLETransport.shared
+
+        // Create a legacy format packet (no magic bytes)
+        // Legacy format: UUID(16B) + Seq(2B) + Total(2B) + Checksum(4B) + Payload
+        let legacyUUID = UUID()
+        let payload = Data([0xAA, 0xBB, 0xCC])
+
+        // Calculate checksum
+        let checksum: UInt32 = payload.withUnsafeBytes { bytes in
+            bytes.reduce(0 as UInt32) { $0 &+ UInt32($1) }
+        }
+
+        var legacyPacket = Data()
+        // UUID (16 bytes)
+        legacyPacket.append(legacyUUID.data)
+        // Sequence (2 bytes, big endian)
+        var seq: UInt16 = 0
+        legacyPacket.append(withUnsafeBytes(of: &seq) { Data($0.reversed()) })
+        // Total (2 bytes, big endian)
+        var total: UInt16 = 1
+        legacyPacket.append(withUnsafeBytes(of: &total) { Data($0.reversed()) })
+        // Checksum (4 bytes, big endian)
+        var checksumBE = checksum.bigEndian
+        legacyPacket.append(withUnsafeBytes(of: &checksumBE) { Data($0) })
+        // Payload
+        legacyPacket.append(payload)
+
+        // Legacy packet should be detected and rejected (returns nil)
+        let result = await transport.receive(legacyPacket)
+
+        #expect(result == nil, "Legacy format packet should be detected and rejected, not processed as raw data")
+    }
+
+    @Test("Short data that looks like legacy header is treated as raw data")
+    func testShortDataNotMistakenForLegacy() async throws {
+        let transport = BLETransport.shared
+
+        // Data that's too short to be a valid legacy packet (< 24 bytes)
+        // Should be treated as raw data
+        let shortData = Data([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+                              0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
+                              0x11, 0x12, 0x13])  // 19 bytes
+
+        let result = await transport.receive(shortData)
+
+        #expect(result == shortData, "Short data should be returned as raw data")
+    }
+
+    @Test("JSON payload is not mistaken for legacy packet")
+    func testJSONPayloadNotMistakenForLegacy() async throws {
+        let transport = BLETransport.shared
+
+        // A typical JSON payload that might be >= 24 bytes
+        let jsonString = """
+        {"method":"readTemperature","args":[]}
+        """
+        let jsonData = jsonString.data(using: .utf8)!
+
+        #expect(jsonData.count >= 24, "Test data should be >= 24 bytes")
+
+        let result = await transport.receive(jsonData)
+
+        // JSON data doesn't have valid legacy packet structure, so should be returned as-is
+        #expect(result == jsonData, "JSON payload should be returned as raw data")
+    }
 }
