@@ -59,8 +59,8 @@ public actor CoreBluetoothCentralManager: BLECentralManagerProtocol {
             return .unknown
         }
 
-        if centralManager.state == .poweredOn {
-            return .poweredOn
+        if centralManager.state.isResolvedBluetoothState {
+            return centralManager.state
         }
 
         return await withCheckedContinuation { continuation in
@@ -82,8 +82,12 @@ public actor CoreBluetoothCentralManager: BLECentralManagerProtocol {
                 await self.startScanning(for: cbUUIDs, continuation: continuation)
 
                 // Set timeout
-                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                await self.finishScanIfNeeded()
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                    await self.finishScanIfNeeded()
+                } catch {
+                    return
+                }
             }
         }
     }
@@ -111,22 +115,7 @@ public actor CoreBluetoothCentralManager: BLECentralManagerProtocol {
             throw BleuError.bluetoothPoweredOff
         }
 
-        // Connect with timeout
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            group.addTask {
-                try await self.performConnection(to: peripheral)
-            }
-
-            group.addTask { [weak self] in
-                try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                // Cancel the connection attempt before throwing timeout
-                await self?.cancelConnection(peripheral)
-                throw BleuError.connectionTimeout
-            }
-
-            try await group.next()
-            group.cancelAll()
-        }
+        try await performConnection(to: peripheral, timeout: timeout)
     }
 
     public func disconnect(from peripheralID: UUID) async throws {
@@ -134,7 +123,11 @@ public actor CoreBluetoothCentralManager: BLECentralManagerProtocol {
             return  // Already disconnected
         }
 
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            if disconnectionContinuations[peripheralID] != nil {
+                continuation.resume(throwing: BleuError.operationInProgress("Disconnecting from \(peripheralID)"))
+                return
+            }
             disconnectionContinuations[peripheralID] = continuation
             centralManager?.cancelPeripheralConnection(peripheral)
         }
@@ -157,6 +150,10 @@ public actor CoreBluetoothCentralManager: BLECentralManagerProtocol {
         let cbUUIDs = serviceUUIDs?.map { CBUUID(nsuuid: $0) }
 
         return try await withCheckedThrowingContinuation { continuation in
+            if serviceDiscoveryContinuations[peripheralID] != nil {
+                continuation.resume(throwing: BleuError.operationInProgress("Discovering services for \(peripheralID)"))
+                return
+            }
             serviceDiscoveryContinuations[peripheralID] = continuation
             peripheral.discoverServices(cbUUIDs)
         }
@@ -180,6 +177,10 @@ public actor CoreBluetoothCentralManager: BLECentralManagerProtocol {
         let cbCharUUIDs = characteristicUUIDs?.map { CBUUID(nsuuid: $0) }
 
         return try await withCheckedThrowingContinuation { continuation in
+            if characteristicDiscoveryContinuations[peripheralID] != nil {
+                continuation.resume(throwing: BleuError.operationInProgress("Discovering characteristics for \(peripheralID)"))
+                return
+            }
             characteristicDiscoveryContinuations[peripheralID] = continuation
             peripheral.discoverCharacteristics(cbCharUUIDs, for: service)
         }
@@ -301,8 +302,12 @@ public actor CoreBluetoothCentralManager: BLECentralManagerProtocol {
 
     // MARK: - Private Connection Methods
 
-    private func performConnection(to peripheral: CBPeripheral) async throws {
-        try await withCheckedThrowingContinuation { continuation in
+    private func performConnection(to peripheral: CBPeripheral, timeout: TimeInterval) async throws {
+        guard connectionContinuations[peripheral.identifier] == nil else {
+            throw BleuError.operationInProgress("Connecting to \(peripheral.identifier)")
+        }
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             connectionContinuations[peripheral.identifier] = continuation
 
             // Setup peripheral delegate
@@ -311,6 +316,13 @@ public actor CoreBluetoothCentralManager: BLECentralManagerProtocol {
             peripheral.delegate = delegate
 
             centralManager?.connect(peripheral, options: nil)
+
+            Task { [weak self, peripheralID = peripheral.identifier] in
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                    await self?.handleConnectionTimeout(for: peripheralID)
+                } catch {}
+            }
         }
     }
 
@@ -342,10 +354,22 @@ public actor CoreBluetoothCentralManager: BLECentralManagerProtocol {
     func handleStateUpdate(_ state: CBManagerState) async {
         await messageChannel.send(.stateChanged(state))
 
-        if state == .poweredOn && !stateContinuations.isEmpty {
+        if state.isResolvedBluetoothState && !stateContinuations.isEmpty {
             stateContinuations.forEach { $0.resume(returning: state) }
             stateContinuations.removeAll()
         }
+    }
+
+    func handleConnectionTimeout(for peripheralID: UUID) async {
+        guard let continuation = connectionContinuations.removeValue(forKey: peripheralID) else {
+            return
+        }
+
+        if let peripheral = connectedPeripherals[peripheralID] ?? discoveredPeripherals[peripheralID] ?? retrievePeripheral(with: peripheralID) {
+            centralManager?.cancelPeripheralConnection(peripheral)
+        }
+
+        continuation.resume(throwing: BleuError.connectionTimeout)
     }
 
     func handlePeripheralDiscovery(_ discovered: DiscoveredPeripheral, peripheral: CBPeripheral) async {
@@ -386,11 +410,11 @@ public actor CoreBluetoothCentralManager: BLECentralManagerProtocol {
         await messageChannel.send(.peripheralDisconnected(peripheral.identifier, error))
     }
 
-    func handleServiceDiscovery(for peripheralID: UUID, services: [CBService]?, error: Error?) async {
+    func handleServiceDiscovery(for peripheralID: UUID, services: [CoreBluetoothServiceSnapshot]?, error: Error?) async {
         // Create metadata from services
         let metadata = services?.map { service -> ServiceMetadata in
             // Use deterministic UUID for short UUIDs
-            let uuid = UUID(uuidString: service.uuid.uuidString) ?? UUID.deterministic(from: service.uuid.uuidString)
+            let uuid = UUID(uuidString: service.uuid) ?? UUID.deterministic(from: service.uuid)
             return ServiceMetadata(
                 uuid: uuid,
                 isPrimary: service.isPrimary,
@@ -412,7 +436,7 @@ public actor CoreBluetoothCentralManager: BLECentralManagerProtocol {
         }
     }
 
-    fileprivate func handleCharacteristicDiscovery(for peripheralID: UUID, serviceUUID: String, characteristics: [CoreBluetoothSendableCharacteristic]?, error: Error?) async {
+    fileprivate func handleCharacteristicDiscovery(for peripheralID: UUID, serviceUUID: String, characteristics: [CoreBluetoothCharacteristicSnapshot]?, error: Error?) async {
         // Create metadata from characteristics
         let metadata = characteristics?.map { characteristic -> CharacteristicMetadata in
             // Use deterministic UUID for short UUIDs
@@ -478,8 +502,13 @@ private final class PeripheralDelegate: NSObject, CBPeripheralDelegate, @uncheck
     }
 
     func readValue(for characteristic: CBCharacteristic, peripheral: CBPeripheral) async throws -> Data {
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
             lock.lock()
+            if readContinuations[characteristic.uuid] != nil {
+                lock.unlock()
+                continuation.resume(throwing: BleuError.operationInProgress("Reading \(characteristic.uuid.uuidString)"))
+                return
+            }
             readContinuations[characteristic.uuid] = continuation
             lock.unlock()
             peripheral.readValue(for: characteristic)
@@ -487,8 +516,13 @@ private final class PeripheralDelegate: NSObject, CBPeripheralDelegate, @uncheck
     }
 
     func writeValue(_ data: Data, for characteristic: CBCharacteristic, peripheral: CBPeripheral) async throws {
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             lock.lock()
+            if writeContinuations[characteristic.uuid] != nil {
+                lock.unlock()
+                continuation.resume(throwing: BleuError.operationInProgress("Writing \(characteristic.uuid.uuidString)"))
+                return
+            }
             writeContinuations[characteristic.uuid] = continuation
             lock.unlock()
             peripheral.writeValue(data, for: characteristic, type: .withResponse)
@@ -496,8 +530,13 @@ private final class PeripheralDelegate: NSObject, CBPeripheralDelegate, @uncheck
     }
 
     func setNotifyValue(_ enabled: Bool, for characteristic: CBCharacteristic, peripheral: CBPeripheral) async throws {
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             lock.lock()
+            if notifyContinuations[characteristic.uuid] != nil {
+                lock.unlock()
+                continuation.resume(throwing: BleuError.operationInProgress("Changing notification state for \(characteristic.uuid.uuidString)"))
+                return
+            }
             notifyContinuations[characteristic.uuid] = continuation
             lock.unlock()
             peripheral.setNotifyValue(enabled, for: characteristic)
@@ -507,11 +546,9 @@ private final class PeripheralDelegate: NSObject, CBPeripheralDelegate, @uncheck
     // MARK: - CBPeripheralDelegate Methods
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
-        let services = peripheral.services
+        let services = peripheral.services?.map { CoreBluetoothServiceSnapshot(from: $0) }
         Task { @Sendable [weak self, peripheralID] in
             guard let self = self else { return }
-            // We pass the services directly since we marked the delegate as @unchecked Sendable
-            // This is safe because we're only reading the services data
             await self.actor?.handleServiceDiscovery(for: peripheralID, services: services, error: error)
         }
     }
@@ -519,7 +556,7 @@ private final class PeripheralDelegate: NSObject, CBPeripheralDelegate, @uncheck
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
         // Extract service info before Task boundary
         let serviceUUID = service.uuid.uuidString
-        let characteristics = service.characteristics?.map { CoreBluetoothSendableCharacteristic(from: $0) }
+        let characteristics = service.characteristics?.map { CoreBluetoothCharacteristicSnapshot(from: $0) }
 
         Task { [weak self, peripheralID] in
             guard let self = self else { return }
@@ -651,18 +688,5 @@ final class CoreBluetoothCentralManagerDelegateProxy: NSObject, CBCentralManager
         Task { [weak actor] in
             await actor?.handleDisconnection(peripheral, error: error)
         }
-    }
-}
-
-// MARK: - CoreBluetoothSendableCharacteristic
-
-/// Sendable representation of CBCharacteristic for CoreBluetoothCentralManager
-fileprivate struct CoreBluetoothSendableCharacteristic: Sendable {
-    let uuid: String
-    let properties: UInt
-
-    init(from characteristic: CBCharacteristic) {
-        self.uuid = characteristic.uuid.uuidString
-        self.properties = characteristic.properties.rawValue
     }
 }

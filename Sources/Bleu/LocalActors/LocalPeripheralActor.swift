@@ -70,6 +70,10 @@ public actor LocalPeripheralActor {
         guard let peripheralManager = peripheralManager else {
             throw BleuError.bluetoothUnavailable
         }
+
+        guard advertisingContinuation == nil else {
+            throw BleuError.operationInProgress("Starting advertising")
+        }
         
         // Build advertisement dictionary
         var advertisementDict: [String: Any] = [:]
@@ -95,7 +99,11 @@ public actor LocalPeripheralActor {
         }
         
         // Start advertising
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            if self.advertisingContinuation != nil {
+                continuation.resume(throwing: BleuError.operationInProgress("Starting advertising"))
+                return
+            }
             self.advertisingContinuation = continuation
             peripheralManager.startAdvertising(advertisementDict)
         }
@@ -132,8 +140,8 @@ public actor LocalPeripheralActor {
             return .unknown
         }
         
-        if peripheralManager.state == .poweredOn {
-            return .poweredOn
+        if peripheralManager.state.isResolvedBluetoothState {
+            return peripheralManager.state
         }
         
         return await withCheckedContinuation { continuation in
@@ -171,7 +179,7 @@ extension LocalPeripheralActor {
     func handleStateUpdate(_ state: CBManagerState) async {
         await messageChannel.send(.stateChanged(state))
         
-        if state == .poweredOn && !stateContinuations.isEmpty {
+        if state.isResolvedBluetoothState && !stateContinuations.isEmpty {
             stateContinuations.forEach { $0.resume(returning: state) }
             stateContinuations.removeAll()
         }

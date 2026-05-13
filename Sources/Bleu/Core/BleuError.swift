@@ -15,6 +15,7 @@ public enum BleuError: Error, Codable, LocalizedError {
     case invalidData
     case quotaExceeded
     case operationNotSupported
+    case operationInProgress(String)
     case methodNotSupported(String)
     case actorNotFound(UUID)
     case rpcFailed(String)
@@ -47,6 +48,8 @@ public enum BleuError: Error, Codable, LocalizedError {
             return "Operation quota exceeded"
         case .operationNotSupported:
             return "Operation not supported"
+        case .operationInProgress(let operation):
+            return "Operation already in progress: \(operation)"
         case .methodNotSupported(let method):
             return "Method '\(method)' not supported"
         case .actorNotFound(let uuid):
@@ -102,6 +105,9 @@ public enum BleuError: Error, Codable, LocalizedError {
             self = .quotaExceeded
         case "operationNotSupported":
             self = .operationNotSupported
+        case "operationInProgress":
+            let operation = try container.decode(String.self, forKey: .string)
+            self = .operationInProgress(operation)
         case "methodNotSupported":
             let method = try container.decode(String.self, forKey: .string)
             self = .methodNotSupported(method)
@@ -152,6 +158,9 @@ public enum BleuError: Error, Codable, LocalizedError {
             try container.encode("quotaExceeded", forKey: .type)
         case .operationNotSupported:
             try container.encode("operationNotSupported", forKey: .type)
+        case .operationInProgress(let operation):
+            try container.encode("operationInProgress", forKey: .type)
+            try container.encode(operation, forKey: .string)
         case .methodNotSupported(let method):
             try container.encode("methodNotSupported", forKey: .type)
             try container.encode(method, forKey: .string)

@@ -59,8 +59,8 @@ public actor CoreBluetoothPeripheralManager: BLEPeripheralManagerProtocol {
             return .unknown
         }
 
-        if peripheralManager.state == .poweredOn {
-            return .poweredOn
+        if peripheralManager.state.isResolvedBluetoothState {
+            return peripheralManager.state
         }
 
         return await withCheckedContinuation { continuation in
@@ -73,6 +73,10 @@ public actor CoreBluetoothPeripheralManager: BLEPeripheralManagerProtocol {
         let state = await waitForPoweredOn()
         guard state == .poweredOn else {
             throw BleuError.bluetoothPoweredOff
+        }
+
+        guard serviceAddContinuation == nil else {
+            throw BleuError.operationInProgress("Adding a service")
         }
 
         // Create service
@@ -108,6 +112,10 @@ public actor CoreBluetoothPeripheralManager: BLEPeripheralManagerProtocol {
 
         // Add service to peripheral manager and wait for completion
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            if serviceAddContinuation != nil {
+                continuation.resume(throwing: BleuError.operationInProgress("Adding a service"))
+                return
+            }
             serviceAddContinuation = continuation
             peripheralManager?.add(cbService)
         }
@@ -116,6 +124,10 @@ public actor CoreBluetoothPeripheralManager: BLEPeripheralManagerProtocol {
     public func startAdvertising(_ data: AdvertisementData) async throws {
         guard let peripheralManager = peripheralManager else {
             throw BleuError.bluetoothUnavailable
+        }
+
+        guard advertisingContinuation == nil else {
+            throw BleuError.operationInProgress("Starting advertising")
         }
 
         // Build advertisement dictionary
@@ -142,7 +154,11 @@ public actor CoreBluetoothPeripheralManager: BLEPeripheralManagerProtocol {
         }
 
         // Start advertising
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            if self.advertisingContinuation != nil {
+                continuation.resume(throwing: BleuError.operationInProgress("Starting advertising"))
+                return
+            }
             self.advertisingContinuation = continuation
             peripheralManager.startAdvertising(advertisementDict)
         }
@@ -256,7 +272,7 @@ extension CoreBluetoothPeripheralManager {
         _state = state
         await eventChannel.send(.stateChanged(state))
 
-        if state == .poweredOn && !stateContinuations.isEmpty {
+        if state.isResolvedBluetoothState && !stateContinuations.isEmpty {
             stateContinuations.forEach { $0.resume(returning: state) }
             stateContinuations.removeAll()
         }

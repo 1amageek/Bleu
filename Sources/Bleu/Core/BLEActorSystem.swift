@@ -39,6 +39,45 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
     // BLE manager protocol instances (can be production or mock)
     private let peripheralManager: BLEPeripheralManagerProtocol
     private let centralManager: BLECentralManagerProtocol
+    private let lifecycleTasks = LifecycleTaskManager()
+
+    private actor LifecycleTaskManager {
+        private var tasks: [Task<Void, Never>] = []
+        private var isShutdown = false
+
+        func add(contentsOf tasks: [Task<Void, Never>]) {
+            guard !isShutdown else {
+                for task in tasks {
+                    task.cancel()
+                }
+                return
+            }
+
+            self.tasks.append(contentsOf: tasks)
+        }
+
+        func add(_ task: Task<Void, Never>) {
+            guard !isShutdown else {
+                task.cancel()
+                return
+            }
+
+            tasks.append(task)
+        }
+
+        func active() -> Bool {
+            !isShutdown
+        }
+
+        func shutdown() {
+            isShutdown = true
+
+            for task in tasks {
+                task.cancel()
+            }
+            tasks.removeAll()
+        }
+    }
     
     // Connection tracking
     private actor ProxyManager {
@@ -47,6 +86,8 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         private var peripheralCalls: [UUID: Set<String>] = [:]  // Track which calls belong to which peripheral
         private var callIDToPeripheral: [String: UUID] = [:]  // Reverse mapping for O(1) lookup
         private var pendingCallsQueue: [UUID: [String]] = [:]  // FIFO queue of pending calls per peripheral for ATT error handling
+        private var timeoutTasks: [String: Task<Void, Never>] = [:]
+        private var isShutdown = false
 
         /// Track calls cancelled before continuation was stored (timeout race fix)
         /// Includes timestamp for TTL-based cleanup to prevent memory leaks
@@ -55,16 +96,32 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         private var cleanupTask: Task<Void, Never>?
 
         init() {
-            // Start cleanup task asynchronously
-            Task { await self.startCleanupTask() }
+            Task { await self.startCleanupTaskIfNeeded() }
         }
 
-        private func startCleanupTask() {
-            cleanupTask = Task {
-                while !Task.isCancelled {
-                    try? await Task.sleep(nanoseconds: 10_000_000_000)  // 10 seconds
-                    self.cleanupStaleCancelledCalls()
+        private func startCleanupTaskIfNeeded() {
+            guard !isShutdown, cleanupTask == nil else {
+                return
+            }
+
+            cleanupTask = Task { [weak self] in
+                await self?.cleanupLoop()
+            }
+        }
+
+        private func cleanupLoop() async {
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: 10_000_000_000)
+                } catch {
+                    break
                 }
+
+                guard !isShutdown else {
+                    break
+                }
+
+                cleanupStaleCancelledCalls()
             }
         }
 
@@ -97,7 +154,17 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         }
 
         // Pending call management
-        func storePendingCall(_ callID: String, for peripheralID: UUID, continuation: CheckedContinuation<Data, Error>) {
+        func storePendingCall(
+            _ callID: String,
+            for peripheralID: UUID,
+            continuation: CheckedContinuation<Data, Error>,
+            timeoutNanoseconds: UInt64
+        ) {
+            guard !isShutdown else {
+                continuation.resume(throwing: BleuError.disconnected)
+                return
+            }
+
             // CRITICAL RACE FIX: Check if this call was already cancelled (e.g., by timeout)
             // This can happen when timeout fires BEFORE the Task{} in withCheckedThrowingContinuation executes
             if let entry = cancelledCalls.removeValue(forKey: callID) {
@@ -113,49 +180,30 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
             // CONCURRENT RPC FIX: Track calls in FIFO queue for better ATT error matching
             // ATT errors typically affect the oldest pending request
             pendingCallsQueue[peripheralID, default: []].append(callID)
+
+            timeoutTasks[callID] = Task { [weak self] in
+                do {
+                    try await Task.sleep(nanoseconds: timeoutNanoseconds)
+                    await self?.cancelPendingCall(callID, error: BleuError.connectionTimeout)
+                } catch {}
+            }
         }
 
         func resumePendingCall(_ callID: String, with result: Result<Data, Error>) {
-            if let continuation = pendingCalls.removeValue(forKey: callID) {
+            if let continuation = removePendingCall(callID) {
                 continuation.resume(with: result)
-                // O(1) lookup using reverse mapping instead of O(n*m) loop
-                if let peripheralID = callIDToPeripheral.removeValue(forKey: callID) {
-                    peripheralCalls[peripheralID]?.remove(callID)
-                    if peripheralCalls[peripheralID]?.isEmpty == true {
-                        peripheralCalls.removeValue(forKey: peripheralID)
-                    }
-
-                    // CONCURRENT RPC FIX: Remove from FIFO queue
-                    if let index = pendingCallsQueue[peripheralID]?.firstIndex(of: callID) {
-                        pendingCallsQueue[peripheralID]?.remove(at: index)
-                        if pendingCallsQueue[peripheralID]?.isEmpty == true {
-                            pendingCallsQueue.removeValue(forKey: peripheralID)
-                        }
-                    }
-                }
             }
         }
 
         func cancelPendingCall(_ callID: String, error: Error) {
-            if let continuation = pendingCalls.removeValue(forKey: callID) {
+            if let continuation = removePendingCall(callID) {
                 // Continuation exists - resume it with error
                 continuation.resume(throwing: error)
-                // O(1) lookup using reverse mapping instead of O(n*m) loop
-                if let peripheralID = callIDToPeripheral.removeValue(forKey: callID) {
-                    peripheralCalls[peripheralID]?.remove(callID)
-                    if peripheralCalls[peripheralID]?.isEmpty == true {
-                        peripheralCalls.removeValue(forKey: peripheralID)
-                    }
-
-                    // CONCURRENT RPC FIX: Remove from FIFO queue
-                    if let index = pendingCallsQueue[peripheralID]?.firstIndex(of: callID) {
-                        pendingCallsQueue[peripheralID]?.remove(at: index)
-                        if pendingCallsQueue[peripheralID]?.isEmpty == true {
-                            pendingCallsQueue.removeValue(forKey: peripheralID)
-                        }
-                    }
-                }
             } else {
+                guard !isShutdown else {
+                    return
+                }
+
                 // CRITICAL RACE FIX: Continuation not yet stored (timeout won race)
                 // Store the error with timestamp so storePendingCall can handle it when it arrives
                 // TTL-based cleanup prevents memory leaks if storePendingCall is never called
@@ -171,6 +219,28 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
                     }
                 }
             }
+        }
+
+        private func removePendingCall(_ callID: String) -> CheckedContinuation<Data, Error>? {
+            let continuation = pendingCalls.removeValue(forKey: callID)
+
+            timeoutTasks.removeValue(forKey: callID)?.cancel()
+
+            if let peripheralID = callIDToPeripheral.removeValue(forKey: callID) {
+                peripheralCalls[peripheralID]?.remove(callID)
+                if peripheralCalls[peripheralID]?.isEmpty == true {
+                    peripheralCalls.removeValue(forKey: peripheralID)
+                }
+
+                if let index = pendingCallsQueue[peripheralID]?.firstIndex(of: callID) {
+                    pendingCallsQueue[peripheralID]?.remove(at: index)
+                    if pendingCallsQueue[peripheralID]?.isEmpty == true {
+                        pendingCallsQueue.removeValue(forKey: peripheralID)
+                    }
+                }
+            }
+
+            return continuation
         }
 
         /// Cancel the oldest pending call for a peripheral (for ATT errors)
@@ -207,10 +277,9 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
             }
 
             for callID in callIDs {
-                if let continuation = pendingCalls.removeValue(forKey: callID) {
+                if let continuation = removePendingCall(callID) {
                     continuation.resume(throwing: error)
                 }
-                callIDToPeripheral.removeValue(forKey: callID)  // Clean up reverse mapping
             }
 
             // CONCURRENT RPC FIX: Clean up FIFO queue
@@ -220,17 +289,28 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         /// Shutdown ProxyManager and cancel all background tasks
         /// This method is idempotent and safe to call multiple times
         func shutdown() {
+            isShutdown = true
+
             // Cancel cleanup task
             cleanupTask?.cancel()
             cleanupTask = nil
+
+            for task in timeoutTasks.values {
+                task.cancel()
+            }
+            timeoutTasks.removeAll()
 
             // Clear all state
             cancelledCalls.removeAll()
             peripheralProxies.removeAll()
             pendingCallsQueue.removeAll()
+            peripheralCalls.removeAll()
+            callIDToPeripheral.removeAll()
 
-            // Note: We don't cancel pending calls here - they will timeout naturally
-            // or be cancelled by the caller if needed
+            for continuation in pendingCalls.values {
+                continuation.resume(throwing: BleuError.disconnected)
+            }
+            pendingCalls.removeAll()
         }
     }
     
@@ -254,6 +334,7 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
     /// This method is idempotent and safe to call multiple times.
     /// After shutdown, the system should not be used for new operations.
     public func shutdown() async {
+        await lifecycleTasks.shutdown()
         await proxyManager.shutdown()
         BleuLogger.actorSystem.info("BLEActorSystem shutdown complete")
     }
@@ -273,37 +354,81 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         self.peripheralManager = peripheralManager
         self.centralManager = centralManager
 
-        Task {
-            // Get initial states from managers
-            let peripheralState = await peripheralManager.waitForPoweredOn()
-            let centralState = await centralManager.waitForPoweredOn()
+        let bootstrapTask = Task { [peripheralManager, centralManager, bootstrap, lifecycleTasks] in
+            guard await lifecycleTasks.active() else {
+                return
+            }
+
+            // Snapshot initial states without parking this lifecycle task in manager continuations.
+            let peripheralState = await peripheralManager.state
+            let centralState = await centralManager.state
+
+            guard await lifecycleTasks.active() else {
+                return
+            }
 
             // Update bootstrap with actual states (may not be .poweredOn)
             await bootstrap.updatePeripheralState(peripheralState)
             await bootstrap.updateCentralState(centralState)
         }
+        Task { [lifecycleTasks] in
+            await lifecycleTasks.add(bootstrapTask)
+        }
 
         // Setup BLE event listeners
-        Task {
-            await setupEventListeners()
+        let listenerSetupTask = Task { [weak self] in
+            guard let self = self else {
+                return
+            }
+
+            await self.setupEventListeners()
+        }
+        Task { [lifecycleTasks] in
+            await lifecycleTasks.add(listenerSetupTask)
         }
     }
 
     /// Setup event listeners for BLE notifications and responses
     private func setupEventListeners() async {
         // Listen to central manager events for characteristic value updates (RPC responses)
-        Task {
+        let centralTask = Task { [weak self, centralManager, lifecycleTasks] in
+            guard await lifecycleTasks.active() else {
+                return
+            }
+
             for await event in centralManager.events {
-                await handleBLEEvent(event)
+                if Task.isCancelled {
+                    break
+                }
+
+                guard await lifecycleTasks.active() else {
+                    break
+                }
+
+                await self?.handleBLEEvent(event)
             }
         }
 
         // Listen to peripheral manager events for incoming RPC requests
-        Task {
+        let peripheralTask = Task { [weak self, peripheralManager, lifecycleTasks] in
+            guard await lifecycleTasks.active() else {
+                return
+            }
+
             for await event in peripheralManager.events {
-                await handlePeripheralEvent(event)
+                if Task.isCancelled {
+                    break
+                }
+
+                guard await lifecycleTasks.active() else {
+                    break
+                }
+
+                await self?.handlePeripheralEvent(event)
             }
         }
+
+        await lifecycleTasks.add(contentsOf: [centralTask, peripheralTask])
     }
 
     /// Handle BLE events from central manager (responses to our RPCs)
@@ -474,7 +599,7 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
                 throw BleuError.connectionTimeout
             }
 
-            try? await Task.sleep(nanoseconds: checkInterval)
+            try await Task.sleep(nanoseconds: checkInterval)
         }
     }
 
@@ -644,46 +769,32 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
 
         // 4. Send via BLE and wait for response with timeout
         let responseData: Data
-        do {
-            responseData = try await withThrowingTaskGroup(of: Data.self) { group in
-                // Task 1: Send and wait for response
-                group.addTask { [weak self] in
+        responseData = try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                Task { [weak self] in
                     guard let self = self else {
-                        throw BleuError.actorNotFound(actor.id)
+                        continuation.resume(throwing: BleuError.actorNotFound(actor.id))
+                        return
                     }
 
-                    return try await withCheckedThrowingContinuation { continuation in
-                        Task {
-                            // Store continuation for when response arrives, tracking which peripheral it's for
-                            await self.proxyManager.storePendingCall(envelope.callID, for: actor.id, continuation: continuation)
+                    await self.proxyManager.storePendingCall(
+                        envelope.callID,
+                        for: actor.id,
+                        continuation: continuation,
+                        timeoutNanoseconds: 10_000_000_000
+                    )
 
-                            // Send the request
-                            do {
-                                try await proxy.sendMessage(envelopeData)
-                            } catch {
-                                // If send fails, cancel the pending call
-                                await self.proxyManager.cancelPendingCall(envelope.callID, error: error)
-                            }
-                        }
+                    do {
+                        try await proxy.sendMessage(envelopeData)
+                    } catch {
+                        await self.proxyManager.cancelPendingCall(envelope.callID, error: error)
                     }
                 }
-
-                // Task 2: Timeout
-                group.addTask {
-                    try await Task.sleep(nanoseconds: 10_000_000_000) // 10 seconds
-                    throw BleuError.connectionTimeout
-                }
-
-                // Wait for first result (either response or timeout)
-                let result = try await group.next()!
-                group.cancelAll()
-                return result
             }
-        } catch {
-            // CRITICAL FIX: Clean up pending call on ANY error (timeout, send failure, etc.)
-            // This prevents continuation leaks when timeout occurs
-            await proxyManager.cancelPendingCall(envelope.callID, error: error)
-            throw error
+        } onCancel: {
+            Task { [proxyManager] in
+                await proxyManager.cancelPendingCall(envelope.callID, error: CancellationError())
+            }
         }
 
         // 5. Deserialize response envelope
@@ -902,7 +1013,11 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
 
                 // Cleanup: remove any partial state and disconnect
                 await cleanupPeripheralState(discovered.id)
-                try? await centralManager.disconnect(from: discovered.id)
+                do {
+                    try await centralManager.disconnect(from: discovered.id)
+                } catch {
+                    BleuLogger.actorSystem.warning("Failed to disconnect \(discovered.id) during cleanup: \(error)")
+                }
 
                 // Continue with next peripheral
                 continue
@@ -913,7 +1028,11 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
 
                 // Cleanup: remove any partial state and disconnect
                 await cleanupPeripheralState(discovered.id)
-                try? await centralManager.disconnect(from: discovered.id)
+                do {
+                    try await centralManager.disconnect(from: discovered.id)
+                } catch {
+                    BleuLogger.actorSystem.warning("Failed to disconnect \(discovered.id) during cleanup: \(error)")
+                }
 
                 // Continue with next peripheral
                 continue
@@ -1109,6 +1228,8 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
             return .transportFailed("Quota exceeded")
         case .operationNotSupported:
             return .transportFailed("Operation not supported")
+        case .operationInProgress(let operation):
+            return .transportFailed("Operation already in progress: \(operation)")
         }
     }
 }

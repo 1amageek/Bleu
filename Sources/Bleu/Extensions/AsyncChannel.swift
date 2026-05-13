@@ -4,17 +4,34 @@ import Foundation
 public actor AsyncChannel<Element: Sendable> {
     private var buffer: [Element] = []
     private var continuations: [CheckedContinuation<Element?, Never>] = []
+    private var streamContinuations: [UUID: AsyncStream<Element>.Continuation] = [:]
+    private var terminatedStreamIDs: Set<UUID> = []
+    private let maxReplayBufferCount = 1_024
     private var isFinished = false
     
     /// Send an element to the channel
     public func send(_ element: Element) {
         guard !isFinished else { return }
         
-        if !continuations.isEmpty {
+        if !streamContinuations.isEmpty {
+            buffer.removeAll()
+
+            for continuation in streamContinuations.values {
+                continuation.yield(element)
+            }
+        } else if !continuations.isEmpty {
             let continuation = continuations.removeFirst()
             continuation.resume(returning: element)
         } else {
-            buffer.append(element)
+            appendToReplayBuffer(element)
+        }
+    }
+
+    private func appendToReplayBuffer(_ element: Element) {
+        buffer.append(element)
+
+        if buffer.count > maxReplayBufferCount {
+            buffer.removeFirst(buffer.count - maxReplayBufferCount)
         }
     }
     
@@ -35,26 +52,52 @@ public actor AsyncChannel<Element: Sendable> {
             continuation.resume(returning: nil)
         }
         continuations.removeAll()
+
+        for continuation in streamContinuations.values {
+            continuation.finish()
+        }
+        streamContinuations.removeAll()
     }
     
     /// Create an AsyncStream from this channel
     public nonisolated var stream: AsyncStream<Element> {
         AsyncStream { continuation in
-            let task = Task {
-                while !Task.isCancelled {
-                    let element = await self.next()
-                    if let element = element {
-                        continuation.yield(element)
-                    } else {
-                        continuation.finish()
-                        break
-                    }
+            let id = UUID()
+            Task {
+                await self.registerStream(id: id, continuation: continuation)
+            }
+
+            continuation.onTermination = { _ in
+                Task {
+                    await self.unregisterStream(id: id)
                 }
             }
-            
-            continuation.onTermination = { _ in
-                task.cancel()
+        }
+    }
+
+    private func registerStream(id: UUID, continuation: AsyncStream<Element>.Continuation) {
+        if terminatedStreamIDs.remove(id) != nil {
+            continuation.finish()
+            return
+        }
+
+        guard !isFinished else {
+            continuation.finish()
+            return
+        }
+
+        streamContinuations[id] = continuation
+
+        if !buffer.isEmpty {
+            for element in buffer {
+                continuation.yield(element)
             }
+        }
+    }
+
+    private func unregisterStream(id: UUID) {
+        if streamContinuations.removeValue(forKey: id) == nil {
+            terminatedStreamIDs.insert(id)
         }
     }
     
