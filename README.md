@@ -64,7 +64,7 @@ Add Bleu to your project using Swift Package Manager:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/1amageek/Bleu.git", from: "2.0.0")
+    .package(url: "https://github.com/1amageek/Bleu.git", from: "2.2.0")
 ]
 ```
 
