@@ -15,6 +15,21 @@ import os
 /// - Each system uses unique device UUIDs
 /// - Tests properly clean up via removeMTU() on disconnection
 public actor BLETransport {
+    public enum ReceiveRejection: Sendable, Equatable {
+        case notTransportPacket
+        case truncatedHeader
+        case unsupportedVersion(UInt8)
+        case invalidPacketIdentifier
+        case invalidPacketSequence(sequenceNumber: UInt16, totalPackets: UInt16)
+        case checksumMismatch
+        case legacyPacket
+    }
+
+    public enum ReceiveResult: Sendable, Equatable {
+        case complete(Data)
+        case partial(packetID: UUID, receivedPackets: Int, totalPackets: Int)
+        case rejected(ReceiveRejection)
+    }
 
     /// Maximum write length for BLE packets (including header) - per device
     /// Stored as [deviceID: MTU] to support multiple simultaneous connections
@@ -136,13 +151,22 @@ public actor BLETransport {
     }
     
     /// Fragment data into packets for a specific device
-    public func fragment(_ data: Data, for deviceID: UUID) -> [Packet] {
+    /// - Throws: `BleuError.fragmentationFailed` if the negotiated MTU cannot hold the
+    ///   transport header. Clamping the payload to a positive size while the header alone
+    ///   exceeds the MTU would silently emit packets larger than the link can carry, so we
+    ///   fail explicitly instead (no silent fallback).
+    public func fragment(_ data: Data, for deviceID: UUID) throws -> [Packet] {
         guard !data.isEmpty else { return [] }
 
         let id = UUID()
         // Get device-specific MTU and calculate payload size
         let mtu = getMTU(for: deviceID)
-        let payloadSize = max(1, mtu - headerOverhead)
+        guard mtu > headerOverhead else {
+            throw BleuError.fragmentationFailed(
+                "Negotiated MTU (\(mtu)) is not larger than the \(headerOverhead)-byte transport header; cannot fragment"
+            )
+        }
+        let payloadSize = mtu - headerOverhead
         let totalPackets = UInt16((data.count + payloadSize - 1) / payloadSize)
 
         var packets: [Packet] = []
@@ -266,11 +290,19 @@ public actor BLETransport {
     }
     
     /// Reassemble packets into data
-    public func reassemble(_ packet: Packet) async -> Data? {
+    public func reassemble(_ packet: Packet) -> ReceiveResult {
         // Validate packet
         guard packet.validate() else {
             BleuLogger.transport.warning("Invalid packet checksum for packet \(packet.id)")
-            return nil
+            return .rejected(.checksumMismatch)
+        }
+
+        guard packet.totalPackets > 0, packet.sequenceNumber < packet.totalPackets else {
+            BleuLogger.transport.warning("Invalid packet sequence \(packet.sequenceNumber)/\(packet.totalPackets) for packet \(packet.id)")
+            return .rejected(.invalidPacketSequence(
+                sequenceNumber: packet.sequenceNumber,
+                totalPackets: packet.totalPackets
+            ))
         }
         
         // Get or create reassembly buffer
@@ -281,7 +313,12 @@ public actor BLETransport {
             )
         }
         
-        guard var buffer = reassemblyBuffers[packet.id] else { return nil }
+        guard var buffer = reassemblyBuffers[packet.id] else {
+            return .rejected(.invalidPacketSequence(
+                sequenceNumber: packet.sequenceNumber,
+                totalPackets: packet.totalPackets
+            ))
+        }
         
         // Add packet to buffer
         buffer.packets[packet.sequenceNumber] = packet
@@ -290,10 +327,21 @@ public actor BLETransport {
         // Check if complete
         if buffer.isComplete {
             reassemblyBuffers.removeValue(forKey: packet.id)
-            return buffer.assembleData()
+            if let data = buffer.assembleData() {
+                return .complete(data)
+            }
+
+            return .rejected(.invalidPacketSequence(
+                sequenceNumber: packet.sequenceNumber,
+                totalPackets: packet.totalPackets
+            ))
         }
         
-        return nil
+        return .partial(
+            packetID: packet.id,
+            receivedPackets: buffer.packets.count,
+            totalPackets: Int(packet.totalPackets)
+        )
     }
     
     /// Send data with fragmentation if needed
@@ -303,7 +351,7 @@ public actor BLETransport {
         using centralManager: BLECentralManagerProtocol,
         characteristicUUID: UUID
     ) async throws {
-        let packets = fragment(data, for: deviceID)
+        let packets = try fragment(data, for: deviceID)
 
         for packet in packets {
             let packetData = pack(packet)
@@ -325,16 +373,15 @@ public actor BLETransport {
     /// Legacy packet header size (v0 format without magic bytes)
     private let legacyHeaderSize = 24
 
-    /// Receive data with reassembly
-    /// - Returns: Reassembled data if complete, nil if waiting for more packets or invalid
-    public func receive(_ data: Data) async -> Data? {
+    /// Receive data with reassembly.
+    public func receive(_ data: Data) -> ReceiveResult {
         // Case 1: New format with magic bytes
         if data.count >= 2 && data[0] == packetMagic.0 && data[1] == packetMagic.1 {
             guard let packet = unpack(data) else {
                 BleuLogger.transport.warning("Corrupted BLETransport packet received (invalid format or checksum)")
-                return nil
+                return .rejected(classifyPacketRejection(data))
             }
-            return await reassemble(packet)
+            return reassemble(packet)
         }
 
         // Case 2: Potential legacy format detection
@@ -343,13 +390,38 @@ public actor BLETransport {
             if unpackLegacy(data) != nil {
                 BleuLogger.transport.error("Received legacy format packet (v0). This version is incompatible. Please upgrade the sending device to use BLETransport v1.")
                 // Reject legacy packets - do not process
-                return nil
+                return .rejected(.legacyPacket)
             }
         }
 
-        // Case 3: Raw data (JSON payloads, etc.)
-        BleuLogger.transport.debug("Received raw data (\(data.count) bytes)")
-        return data
+        BleuLogger.transport.warning("Rejected non-BLETransport data (\(data.count) bytes)")
+        return .rejected(.notTransportPacket)
+    }
+
+    private func classifyPacketRejection(_ data: Data) -> ReceiveRejection {
+        guard data.count >= headerOverhead else {
+            return .truncatedHeader
+        }
+
+        let version = data[2]
+        guard version == packetVersion else {
+            return .unsupportedVersion(version)
+        }
+
+        guard UUID(data: data[3..<19]) != nil else {
+            return .invalidPacketIdentifier
+        }
+
+        let sequenceNumber = UInt16(data[19]) << 8 | UInt16(data[20])
+        let totalPackets = UInt16(data[21]) << 8 | UInt16(data[22])
+        guard totalPackets > 0, sequenceNumber < totalPackets else {
+            return .invalidPacketSequence(
+                sequenceNumber: sequenceNumber,
+                totalPackets: totalPackets
+            )
+        }
+
+        return .checksumMismatch
     }
 
     /// Attempt to unpack legacy format (for detection only, not processing)

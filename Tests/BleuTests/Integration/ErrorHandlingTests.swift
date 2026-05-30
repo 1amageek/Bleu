@@ -452,6 +452,86 @@ struct ErrorHandlingTests {
         #expect(readData == testData)
     }
 
+    @Test("Transport rejection emits diagnostic")
+    func testTransportRejectionDiagnostic() async throws {
+        let mockPeripheral = MockPeripheralManager()
+        let mockCentral = MockCentralManager()
+        let system = BLEActorSystem(
+            peripheralManager: mockPeripheral,
+            centralManager: mockCentral
+        )
+
+        try await TestHelpers.waitForReady(system)
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        await mockPeripheral.simulateWriteRequest(
+            from: UUID(),
+            to: UUID(),
+            value: Data([0x00, 0x01, 0x02])
+        )
+
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        let metrics = await system.diagnosticMetrics()
+        #expect(metrics.transportPacketsRejected == 1)
+
+        let events = await system.diagnosticSnapshot()
+        #expect(events.contains { $0.kind == .transportPacketRejected })
+    }
+
+    @Test("Unmatched ATT error emits diagnostic")
+    func testUnmatchedATTErrorDiagnostic() async throws {
+        let bridge = MockBLEBridge()
+
+        var peripheralConfig = MockPeripheralManager.Configuration()
+        peripheralConfig.bridge = bridge
+
+        var centralConfig = MockCentralManager.Configuration()
+        centralConfig.bridge = bridge
+
+        let mockPeripheral1 = MockPeripheralManager(configuration: peripheralConfig)
+        let mockCentral1 = MockCentralManager(configuration: centralConfig)
+        let peripheralSystem = BLEActorSystem(
+            peripheralManager: mockPeripheral1,
+            centralManager: mockCentral1
+        )
+
+        let mockPeripheral2 = MockPeripheralManager(configuration: peripheralConfig)
+        let mockCentral2 = MockCentralManager(configuration: centralConfig)
+        let centralSystem = BLEActorSystem(
+            peripheralManager: mockPeripheral2,
+            centralManager: mockCentral2
+        )
+
+        try await TestHelpers.waitForReady(peripheralSystem)
+        try await TestHelpers.waitForReady(centralSystem)
+
+        let sensor = SensorActor(actorSystem: peripheralSystem)
+        await mockPeripheral1.setPeripheralID(sensor.id)
+        try await peripheralSystem.startAdvertising(sensor)
+
+        let serviceUUID = UUID.serviceUUID(for: SensorActor.self)
+        let serviceMetadata = ServiceMapper.createServiceMetadata(from: SensorActor.self)
+        let discovered = TestHelpers.createDiscoveredPeripheral(
+            id: sensor.id,
+            serviceUUIDs: [serviceUUID]
+        )
+        await mockCentral2.registerPeripheral(discovered, services: [serviceMetadata])
+
+        let actors = try await centralSystem.discover(SensorActor.self, timeout: 1.0)
+        #expect(actors.count == 1)
+
+        await mockCentral2.simulateATTError(for: sensor.id)
+
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        let metrics = await centralSystem.diagnosticMetrics()
+        #expect(metrics.attErrorsUnmatched == 1)
+
+        let events = await centralSystem.diagnosticSnapshot()
+        #expect(events.contains { $0.kind == .attErrorUnmatched })
+    }
+
     // MARK: - Critical Bug Regression Tests
 
     @Test("Stale ATT error does not affect subsequent RPC (Problem 1)")

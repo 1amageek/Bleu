@@ -1,5 +1,6 @@
 import Foundation
 @preconcurrency import CoreBluetooth
+import Synchronization
 
 /// CoreBluetooth implementation of BLECentralManagerProtocol
 /// Wraps CBCentralManager and provides async/await interface
@@ -485,15 +486,17 @@ public actor CoreBluetoothCentralManager: BLECentralManagerProtocol {
 
 /// Delegate for CBPeripheral that handles characteristic operations
 /// Note: Using NSLock for thread-safety as this delegate is called from CoreBluetooth's internal queue
-private final class PeripheralDelegate: NSObject, CBPeripheralDelegate, @unchecked Sendable {
+private final class PeripheralDelegate: NSObject, CBPeripheralDelegate, Sendable {
     let peripheralID: UUID
-    weak var actor: CoreBluetoothCentralManager?
+    nonisolated(unsafe) weak var actor: CoreBluetoothCentralManager?
 
-    // Thread-safe continuation storage using NSLock
-    private let lock = NSLock()
-    private var readContinuations: [CBUUID: CheckedContinuation<Data, Error>] = [:]
-    private var writeContinuations: [CBUUID: CheckedContinuation<Void, Error>] = [:]
-    private var notifyContinuations: [CBUUID: CheckedContinuation<Void, Error>] = [:]
+    private struct State: Sendable {
+        var readContinuations: [String: CheckedContinuation<Data, Error>] = [:]
+        var writeContinuations: [String: CheckedContinuation<Void, Error>] = [:]
+        var notifyContinuations: [String: CheckedContinuation<Void, Error>] = [:]
+    }
+
+    private let state = Mutex(State())
 
     init(peripheralID: UUID, actor: CoreBluetoothCentralManager) {
         self.peripheralID = peripheralID
@@ -503,42 +506,63 @@ private final class PeripheralDelegate: NSObject, CBPeripheralDelegate, @uncheck
 
     func readValue(for characteristic: CBCharacteristic, peripheral: CBPeripheral) async throws -> Data {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
-            lock.lock()
-            if readContinuations[characteristic.uuid] != nil {
-                lock.unlock()
+            let key = characteristic.uuid.uuidString
+            let stored = state.withLock { state in
+                guard state.readContinuations[key] == nil else {
+                    return false
+                }
+
+                state.readContinuations[key] = continuation
+                return true
+            }
+
+            guard stored else {
                 continuation.resume(throwing: BleuError.operationInProgress("Reading \(characteristic.uuid.uuidString)"))
                 return
             }
-            readContinuations[characteristic.uuid] = continuation
-            lock.unlock()
+
             peripheral.readValue(for: characteristic)
         }
     }
 
     func writeValue(_ data: Data, for characteristic: CBCharacteristic, peripheral: CBPeripheral) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            lock.lock()
-            if writeContinuations[characteristic.uuid] != nil {
-                lock.unlock()
+            let key = characteristic.uuid.uuidString
+            let stored = state.withLock { state in
+                guard state.writeContinuations[key] == nil else {
+                    return false
+                }
+
+                state.writeContinuations[key] = continuation
+                return true
+            }
+
+            guard stored else {
                 continuation.resume(throwing: BleuError.operationInProgress("Writing \(characteristic.uuid.uuidString)"))
                 return
             }
-            writeContinuations[characteristic.uuid] = continuation
-            lock.unlock()
+
             peripheral.writeValue(data, for: characteristic, type: .withResponse)
         }
     }
 
     func setNotifyValue(_ enabled: Bool, for characteristic: CBCharacteristic, peripheral: CBPeripheral) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            lock.lock()
-            if notifyContinuations[characteristic.uuid] != nil {
-                lock.unlock()
+            let key = characteristic.uuid.uuidString
+            let stored = state.withLock { state in
+                guard state.notifyContinuations[key] == nil else {
+                    return false
+                }
+
+                state.notifyContinuations[key] = continuation
+                return true
+            }
+
+            guard stored else {
                 continuation.resume(throwing: BleuError.operationInProgress("Changing notification state for \(characteristic.uuid.uuidString)"))
                 return
             }
-            notifyContinuations[characteristic.uuid] = continuation
-            lock.unlock()
+
             peripheral.setNotifyValue(enabled, for: characteristic)
         }
     }
@@ -547,9 +571,8 @@ private final class PeripheralDelegate: NSObject, CBPeripheralDelegate, @uncheck
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         let services = peripheral.services?.map { CoreBluetoothServiceSnapshot(from: $0) }
-        Task { @Sendable [weak self, peripheralID] in
-            guard let self = self else { return }
-            await self.actor?.handleServiceDiscovery(for: peripheralID, services: services, error: error)
+        Task { @Sendable [weak actor, peripheralID] in
+            await actor?.handleServiceDiscovery(for: peripheralID, services: services, error: error)
         }
     }
 
@@ -558,10 +581,9 @@ private final class PeripheralDelegate: NSObject, CBPeripheralDelegate, @uncheck
         let serviceUUID = service.uuid.uuidString
         let characteristics = service.characteristics?.map { CoreBluetoothCharacteristicSnapshot(from: $0) }
 
-        Task { [weak self, peripheralID] in
-            guard let self = self else { return }
+        Task { [weak actor, peripheralID] in
             // Pass extracted values, not the CBService itself
-            await self.actor?.handleCharacteristicDiscovery(for: peripheralID, serviceUUID: serviceUUID, characteristics: characteristics, error: error)
+            await actor?.handleCharacteristicDiscovery(for: peripheralID, serviceUUID: serviceUUID, characteristics: characteristics, error: error)
         }
     }
 
@@ -571,9 +593,10 @@ private final class PeripheralDelegate: NSObject, CBPeripheralDelegate, @uncheck
         let charUUID = characteristic.uuid.uuidString
         let serviceUUID = characteristic.service?.uuid.uuidString
 
-        lock.lock()
-        let continuation = readContinuations.removeValue(forKey: characteristic.uuid)
-        lock.unlock()
+        let key = characteristic.uuid.uuidString
+        let continuation = state.withLock { state in
+            state.readContinuations.removeValue(forKey: key)
+        }
 
         if let continuation = continuation {
             if let error = error {
@@ -583,17 +606,17 @@ private final class PeripheralDelegate: NSObject, CBPeripheralDelegate, @uncheck
             }
         }
 
-        Task { [weak self, peripheralID] in
-            guard let self = self else { return }
+        Task { [weak actor, peripheralID] in
             // Pass only extracted values, not the CBCharacteristic itself
-            await self.actor?.handleValueUpdate(for: peripheralID, characteristicUUID: charUUID, serviceUUID: serviceUUID, value: value, error: error)
+            await actor?.handleValueUpdate(for: peripheralID, characteristicUUID: charUUID, serviceUUID: serviceUUID, value: value, error: error)
         }
     }
 
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
-        lock.lock()
-        let continuation = writeContinuations.removeValue(forKey: characteristic.uuid)
-        lock.unlock()
+        let key = characteristic.uuid.uuidString
+        let continuation = state.withLock { state in
+            state.writeContinuations.removeValue(forKey: key)
+        }
 
         if let continuation = continuation {
             if let error = error {
@@ -605,9 +628,10 @@ private final class PeripheralDelegate: NSObject, CBPeripheralDelegate, @uncheck
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
-        lock.lock()
-        let continuation = notifyContinuations.removeValue(forKey: characteristic.uuid)
-        lock.unlock()
+        let key = characteristic.uuid.uuidString
+        let continuation = state.withLock { state in
+            state.notifyContinuations.removeValue(forKey: key)
+        }
 
         if let continuation = continuation {
             if let error = error {
@@ -622,8 +646,8 @@ private final class PeripheralDelegate: NSObject, CBPeripheralDelegate, @uncheck
 // MARK: - CoreBluetoothCentralManagerDelegateProxy
 
 /// Delegate proxy for CBCentralManager to forward callbacks to CoreBluetoothCentralManager
-final class CoreBluetoothCentralManagerDelegateProxy: NSObject, CBCentralManagerDelegate, @unchecked Sendable {
-    weak var actor: CoreBluetoothCentralManager?
+final class CoreBluetoothCentralManagerDelegateProxy: NSObject, CBCentralManagerDelegate {
+    nonisolated(unsafe) weak var actor: CoreBluetoothCentralManager?
 
     init(actor: CoreBluetoothCentralManager) {
         self.actor = actor

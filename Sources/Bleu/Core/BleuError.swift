@@ -19,7 +19,8 @@ public enum BleuError: Error, Codable, LocalizedError {
     case methodNotSupported(String)
     case actorNotFound(UUID)
     case rpcFailed(String)
-    
+    case fragmentationFailed(String)
+
     public var errorDescription: String? {
         switch self {
         case .bluetoothUnavailable:
@@ -56,6 +57,8 @@ public enum BleuError: Error, Codable, LocalizedError {
             return "Actor with ID \(uuid) not found"
         case .rpcFailed(let reason):
             return "RPC failed: \(reason)"
+        case .fragmentationFailed(let reason):
+            return "Packet fragmentation failed: \(reason)"
         }
     }
     
@@ -117,6 +120,9 @@ public enum BleuError: Error, Codable, LocalizedError {
         case "rpcFailed":
             let reason = try container.decode(String.self, forKey: .string)
             self = .rpcFailed(reason)
+        case "fragmentationFailed":
+            let reason = try container.decode(String.self, forKey: .string)
+            self = .fragmentationFailed(reason)
         default:
             throw DecodingError.dataCorruptedError(forKey: .type, in: container, debugDescription: "Unknown error type")
         }
@@ -169,6 +175,9 @@ public enum BleuError: Error, Codable, LocalizedError {
             try container.encode(uuid, forKey: .uuid)
         case .rpcFailed(let reason):
             try container.encode("rpcFailed", forKey: .type)
+            try container.encode(reason, forKey: .string)
+        case .fragmentationFailed(let reason):
+            try container.encode("fragmentationFailed", forKey: .type)
             try container.encode(reason, forKey: .string)
         }
     }

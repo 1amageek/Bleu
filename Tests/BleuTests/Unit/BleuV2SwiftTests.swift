@@ -119,21 +119,21 @@ struct BLEErrorTests {
         // We'll just verify they can be created
         switch error1 {
         case .bluetoothUnavailable:
-            #expect(true)
+            break
         default:
             Issue.record("Expected bluetoothUnavailable error")
         }
 
         switch error2 {
         case .bluetoothPoweredOff:
-            #expect(true)
+            break
         default:
             Issue.record("Expected bluetoothPoweredOff error")
         }
 
         switch error3 {
         case .peripheralNotFound:
-            #expect(true)
+            break
         default:
             Issue.record("Expected peripheralNotFound error")
         }

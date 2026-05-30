@@ -69,52 +69,8 @@ extension BLEActorSystem {
         return system
     }
 
-    /// Wait for BLEActorSystem to be ready with proper error handling
-    /// - Parameters:
-    ///   - system: The BLEActorSystem to wait for
-    ///   - peripheralManager: Peripheral manager to check state
-    ///   - centralManager: Central manager to check state
-    ///   - timeout: Maximum time to wait
-    /// - Throws: BleuError if Bluetooth state prevents initialization
-    internal static func waitForReady(
-        system: BLEActorSystem,
-        peripheralManager: BLEPeripheralManagerProtocol,
-        centralManager: BLECentralManagerProtocol,
-        timeout: TimeInterval
-    ) async throws {
-        let deadline = Date().addingTimeInterval(timeout)
-        let checkInterval: UInt64 = 50_000_000  // 50ms
-
-        while true {
-            // Check if ready
-            if await system.ready {
-                return
-            }
-
-            // Get current states
-            let peripheralState = await peripheralManager.state
-            let centralState = await centralManager.state
-
-            // Check for unrecoverable states (fail fast)
-            if peripheralState == .unsupported || centralState == .unsupported {
-                throw BleuError.bluetoothUnavailable
-            }
-
-            if peripheralState == .unauthorized || centralState == .unauthorized {
-                throw BleuError.bluetoothUnauthorized
-            }
-
-            // Check timeout
-            if Date() > deadline {
-                if peripheralState == .poweredOff || centralState == .poweredOff {
-                    throw BleuError.bluetoothPoweredOff
-                }
-                throw BleuError.connectionTimeout
-            }
-
-            try? await Task.sleep(nanoseconds: checkInterval)
-        }
-    }
+    // Note: `waitForReady(system:peripheralManager:centralManager:timeout:)` lives in the
+    // Bleu module and is reused here via `@testable import` to avoid duplicating the logic.
 
     /// Create mock instance for testing (synchronous version - legacy)
     /// - Parameters:

@@ -25,7 +25,7 @@ struct TransportLayerTests {
             await transport.updateMaxPayloadSize(for: deviceID, maxWriteLength: 512)
 
             // Fragment for a specific device
-            let packets = await transport.fragment(testData, for: deviceID)
+            let packets = try await transport.fragment(testData, for: deviceID)
 
             // Reassemble using proper binary format
             var reassembled: Data?
@@ -33,7 +33,7 @@ struct TransportLayerTests {
                 // Use the transport's pack method to create proper binary format
                 let packetData = await transport.packPacket(packet)
 
-                if let complete = await transport.receive(packetData) {
+                if case .complete(let complete) = await transport.receive(packetData) {
                     reassembled = complete
                 }
             }
@@ -44,16 +44,15 @@ struct TransportLayerTests {
 
     // MARK: - Problem 5: Magic Byte Tests
 
-    @Test("Raw data backward compatibility")
-    func testRawDataBackwardCompatibility() async throws {
+    @Test("Raw data is rejected")
+    func testRawDataRejection() async throws {
         let transport = BLETransport.shared
 
-        // Raw data without magic bytes should be returned as-is (backward compatibility)
         let rawData = Data([0x01, 0x02, 0x03, 0x04, 0x05])
 
         let result = await transport.receive(rawData)
 
-        #expect(result == rawData, "Raw data should be returned unchanged for backward compatibility")
+        #expect(result == .rejected(.notTransportPacket))
     }
 
     @Test("Corrupted packet with valid magic bytes is rejected")
@@ -65,7 +64,7 @@ struct TransportLayerTests {
 
         // Create a valid packet first
         let testData = Data([0xAA, 0xBB, 0xCC])
-        let packets = await transport.fragment(testData, for: deviceID)
+        let packets = try await transport.fragment(testData, for: deviceID)
         #expect(packets.count == 1)
 
         var packedData = await transport.packPacket(packets[0])
@@ -78,10 +77,9 @@ struct TransportLayerTests {
         packedData[23] ^= 0xFF
         packedData[24] ^= 0xFF
 
-        // Corrupted packet with magic bytes should return nil (not be treated as raw data)
         let result = await transport.receive(packedData)
 
-        #expect(result == nil, "Corrupted packet with magic bytes should be rejected, not returned as raw data")
+        #expect(result == .rejected(.checksumMismatch))
     }
 
     @Test("Valid BLETransport packet is processed correctly")
@@ -92,14 +90,14 @@ struct TransportLayerTests {
         await transport.updateMaxPayloadSize(for: deviceID, maxWriteLength: 512)
 
         let testData = Data([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08])
-        let packets = await transport.fragment(testData, for: deviceID)
+        let packets = try await transport.fragment(testData, for: deviceID)
 
         #expect(packets.count == 1, "Small data should fit in one packet")
 
         let packedData = await transport.packPacket(packets[0])
         let result = await transport.receive(packedData)
 
-        #expect(result == testData, "Valid packet should be reassembled correctly")
+        #expect(result == .complete(testData), "Valid packet should be reassembled correctly")
     }
 
     @Test("Packet header structure validation")
@@ -110,7 +108,7 @@ struct TransportLayerTests {
         await transport.updateMaxPayloadSize(for: deviceID, maxWriteLength: 512)
 
         let testData = Data([0xDE, 0xAD, 0xBE, 0xEF])
-        let packets = await transport.fragment(testData, for: deviceID)
+        let packets = try await transport.fragment(testData, for: deviceID)
 
         #expect(packets.count == 1)
 
@@ -138,8 +136,7 @@ struct TransportLayerTests {
 
         let result = await transport.receive(fakePacketData)
 
-        // Should be rejected as corrupted packet (has magic bytes but invalid format)
-        #expect(result == nil, "Invalid packet with magic bytes should be rejected")
+        #expect(result == .rejected(.truncatedHeader))
     }
 
     // MARK: - Legacy Packet Detection Tests
@@ -173,32 +170,28 @@ struct TransportLayerTests {
         // Payload
         legacyPacket.append(payload)
 
-        // Legacy packet should be detected and rejected (returns nil)
         let result = await transport.receive(legacyPacket)
 
-        #expect(result == nil, "Legacy format packet should be detected and rejected, not processed as raw data")
+        #expect(result == .rejected(.legacyPacket))
     }
 
-    @Test("Short data that looks like legacy header is treated as raw data")
-    func testShortDataNotMistakenForLegacy() async throws {
+    @Test("Short non-transport data is rejected")
+    func testShortDataRejected() async throws {
         let transport = BLETransport.shared
 
-        // Data that's too short to be a valid legacy packet (< 24 bytes)
-        // Should be treated as raw data
         let shortData = Data([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
                               0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
                               0x11, 0x12, 0x13])  // 19 bytes
 
         let result = await transport.receive(shortData)
 
-        #expect(result == shortData, "Short data should be returned as raw data")
+        #expect(result == .rejected(.notTransportPacket))
     }
 
-    @Test("JSON payload is not mistaken for legacy packet")
-    func testJSONPayloadNotMistakenForLegacy() async throws {
+    @Test("JSON payload is rejected without transport framing")
+    func testJSONPayloadRejected() async throws {
         let transport = BLETransport.shared
 
-        // A typical JSON payload that might be >= 24 bytes
         let jsonString = """
         {"method":"readTemperature","args":[]}
         """
@@ -208,7 +201,6 @@ struct TransportLayerTests {
 
         let result = await transport.receive(jsonData)
 
-        // JSON data doesn't have valid legacy packet structure, so should be returned as-is
-        #expect(result == jsonData, "JSON payload should be returned as raw data")
+        #expect(result == .rejected(.notTransportPacket))
     }
 }

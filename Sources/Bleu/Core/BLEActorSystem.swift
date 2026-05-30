@@ -23,6 +23,15 @@ public actor BLEActorSystemBootstrap {
     }
 }
 
+private extension AdvertisementData {
+    func advertisedActorID(for serviceUUID: UUID) -> UUID? {
+        guard let data = serviceData[serviceUUID] else {
+            return nil
+        }
+        return UUID(data: data)
+    }
+}
+
 /// Distributed Actor System for BLE communication
 /// Note: This class is inherently thread-safe because all mutable state is managed
 /// through actors (ProxyManager, BLEActorSystemBootstrap) or immutable/sendable references
@@ -76,6 +85,67 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
                 task.cancel()
             }
             tasks.removeAll()
+        }
+    }
+
+    private struct IncomingRPCRequest: Sendable {
+        let data: Data
+        let centralID: UUID
+        let characteristicID: UUID
+    }
+
+    private actor IncomingRPCQueue {
+        private var capacity: Int?
+        private var pending: [IncomingRPCRequest] = []
+        private var waiters: [CheckedContinuation<IncomingRPCRequest?, Never>] = []
+        private var isShutdown = false
+
+        func configure(capacity: Int) {
+            self.capacity = max(1, capacity)
+        }
+
+        func enqueue(_ request: IncomingRPCRequest) -> Bool {
+            guard !isShutdown, let capacity else {
+                return false
+            }
+
+            if !waiters.isEmpty {
+                let waiter = waiters.removeFirst()
+                waiter.resume(returning: request)
+                return true
+            }
+
+            guard pending.count < capacity else {
+                return false
+            }
+
+            pending.append(request)
+            return true
+        }
+
+        func next() async -> IncomingRPCRequest? {
+            if !pending.isEmpty {
+                return pending.removeFirst()
+            }
+
+            guard !isShutdown else {
+                return nil
+            }
+
+            return await withCheckedContinuation { continuation in
+                waiters.append(continuation)
+            }
+        }
+
+        func shutdown() {
+            isShutdown = true
+            pending.removeAll()
+
+            let continuations = waiters
+            waiters.removeAll()
+            for continuation in continuations {
+                continuation.resume(returning: nil)
+            }
         }
     }
     
@@ -151,6 +221,12 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
 
         func hasProxy(_ id: UUID) -> Bool {
             return peripheralProxies[id] != nil
+        }
+
+        func hasRPCCharacteristic(_ characteristicID: UUID, for peripheralID: UUID) -> Bool {
+            peripheralProxies.values.contains {
+                $0.id == peripheralID && $0.rpcCharUUID == characteristicID
+            }
         }
 
         // Pending call management
@@ -246,12 +322,12 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         /// Cancel the oldest pending call for a peripheral (for ATT errors)
         /// CONCURRENT RPC FIX: ATT errors typically affect the oldest pending request in FIFO order
         /// This is a best-effort approach since CoreBluetooth doesn't provide exact callID mapping
-        func cancelOldestPendingCall(for peripheralID: UUID, error: Error) -> Bool {
+        func cancelOldestPendingCall(for peripheralID: UUID, error: Error) -> String? {
             // Get the oldest pending call from FIFO queue
             guard let oldestCallID = pendingCallsQueue[peripheralID]?.first else {
                 // No pending calls - ATT error for already-completed request
                 BleuLogger.actorSystem.debug("ATT error for peripheral \(peripheralID) but no pending calls - likely already completed")
-                return false
+                return nil
             }
 
             // Check if this call is actually still pending
@@ -267,7 +343,7 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
 
             BleuLogger.actorSystem.debug("Canceling oldest pending call \(oldestCallID) for peripheral \(peripheralID) due to ATT error")
             cancelPendingCall(oldestCallID, error: error)
-            return true
+            return oldestCallID
         }
 
         func cancelAllPendingCalls(for peripheralID: UUID, error: Error) {
@@ -316,6 +392,20 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
     
     private let proxyManager = ProxyManager()
     private let bootstrap = BLEActorSystemBootstrap()
+    private let diagnostics = BleuDiagnostics()
+    private let incomingRPCQueue = IncomingRPCQueue()
+
+    public var diagnosticEvents: AsyncStream<BleuDiagnosticEvent> {
+        diagnostics.events
+    }
+
+    public func diagnosticSnapshot() async -> [BleuDiagnosticEvent] {
+        await diagnostics.snapshot()
+    }
+
+    public func diagnosticMetrics() async -> BleuDiagnosticMetrics {
+        await diagnostics.currentMetrics()
+    }
 
     /// Check if the system is ready for operations
     public var ready: Bool {
@@ -334,8 +424,11 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
     /// This method is idempotent and safe to call multiple times.
     /// After shutdown, the system should not be used for new operations.
     public func shutdown() async {
+        await incomingRPCQueue.shutdown()
         await lifecycleTasks.shutdown()
         await proxyManager.shutdown()
+        registry.clear()
+        await diagnostics.finish()
         BleuLogger.actorSystem.info("BLEActorSystem shutdown complete")
     }
 
@@ -390,6 +483,9 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
 
     /// Setup event listeners for BLE notifications and responses
     private func setupEventListeners() async {
+        let configuration = await BleuConfigurationManager.shared.current()
+        await incomingRPCQueue.configure(capacity: configuration.incomingRPCQueueCapacity)
+
         // Listen to central manager events for characteristic value updates (RPC responses)
         let centralTask = Task { [weak self, centralManager, lifecycleTasks] in
             guard await lifecycleTasks.active() else {
@@ -428,7 +524,33 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
             }
         }
 
-        await lifecycleTasks.add(contentsOf: [centralTask, peripheralTask])
+        var rpcWorkerTasks: [Task<Void, Never>] = []
+        for _ in 0..<max(1, configuration.maxConcurrentIncomingRPCs) {
+            let workerTask = Task { [weak self, lifecycleTasks] in
+                while !Task.isCancelled {
+                    guard await lifecycleTasks.active() else {
+                        break
+                    }
+
+                    guard let self = self else {
+                        break
+                    }
+
+                    guard let request = await self.incomingRPCQueue.next() else {
+                        break
+                    }
+
+                    await self.processIncomingRPC(
+                        request.data,
+                        from: request.centralID,
+                        characteristicUUID: request.characteristicID
+                    )
+                }
+            }
+            rpcWorkerTasks.append(workerTask)
+        }
+
+        await lifecycleTasks.add(contentsOf: [centralTask, peripheralTask] + rpcWorkerTasks)
     }
 
     /// Handle BLE events from central manager (responses to our RPCs)
@@ -438,37 +560,72 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
             // Update central manager state in bootstrap
             await bootstrap.updateCentralState(state)
 
-        case .characteristicValueUpdated(let peripheralID, _, _, let data, let error):
+        case .characteristicValueUpdated(let peripheralID, _, let characteristicID, let data, let error):
             // This is a response to an RPC call we made
+            guard await proxyManager.hasRPCCharacteristic(characteristicID, for: peripheralID) else {
+                return
+            }
 
             // Check for ATT error first and fail the most recent call
             if let error = error {
                 BleuLogger.actorSystem.error("ATT error received for peripheral \(peripheralID): \(error)")
 
-                // CONCURRENT RPC FIX: Cancel the oldest pending call (FIFO order)
-                // ATT errors typically affect the first pending request still in flight
-                let canceled = await proxyManager.cancelOldestPendingCall(for: peripheralID, error: error)
+                // CONCURRENT RPC FIX: Cancel the oldest pending call (FIFO order).
+                // CoreBluetooth does not provide the originating call ID for ATT errors.
+                let matchedCallID = await proxyManager.cancelOldestPendingCall(for: peripheralID, error: error)
 
-                if !canceled {
+                if let matchedCallID {
+                    await recordDiagnostic(
+                        severity: .warning,
+                        kind: .attErrorMatched,
+                        message: "ATT error matched to oldest pending RPC",
+                        peripheralID: peripheralID,
+                        callID: matchedCallID,
+                        error: error
+                    )
+                } else {
                     // No pending calls - ATT error likely for already-completed request or notification
                     BleuLogger.actorSystem.warning("ATT error but no pending call to cancel - may be stale or for notification")
+                    await recordDiagnostic(
+                        severity: .warning,
+                        kind: .attErrorUnmatched,
+                        message: "ATT error had no pending RPC to cancel",
+                        peripheralID: peripheralID,
+                        error: error
+                    )
                 }
                 return
             }
 
             guard let data = data else { return }
-            do {
-                // Unpack BLETransport packet if needed
-                let transport = BLETransport.shared
-                guard let unpackedData = await transport.receive(data) else {
-                    BleuLogger.actorSystem.warning("Failed to reassemble response packet - may need more fragments")
-                    return
+            let transport = BLETransport.shared
+            switch await transport.receive(data) {
+            case .complete(let unpackedData):
+                do {
+                    let responseEnvelope = try JSONDecoder().decode(ResponseEnvelope.self, from: unpackedData)
+                    // Resume the pending call with the response data
+                    await proxyManager.resumePendingCall(responseEnvelope.callID, with: .success(unpackedData))
+                } catch {
+                    BleuLogger.actorSystem.error("Failed to decode response envelope: \(error)")
+                    await recordDiagnostic(
+                        severity: .error,
+                        kind: .responseEnvelopeDecodeFailed,
+                        message: "Failed to decode RPC response envelope",
+                        peripheralID: peripheralID,
+                        error: error
+                    )
                 }
-                let responseEnvelope = try JSONDecoder().decode(ResponseEnvelope.self, from: unpackedData)
-                // Resume the pending call with the response data
-                await proxyManager.resumePendingCall(responseEnvelope.callID, with: .success(unpackedData))
-            } catch {
-                BleuLogger.actorSystem.error("Failed to decode response envelope: \(error)")
+
+            case .partial:
+                return
+
+            case .rejected(let reason):
+                await recordDiagnostic(
+                    severity: .warning,
+                    kind: .transportPacketRejected,
+                    message: "Rejected RPC response packet: \(reason)",
+                    peripheralID: peripheralID
+                )
             }
 
         case .peripheralDisconnected(let peripheralID, _):
@@ -491,36 +648,112 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
             await bootstrap.updatePeripheralState(state)
 
         case .writeRequestReceived(let central, _, let characteristicUUID, let data):
-            // This is an incoming RPC request
-            do {
+            // Reassemble inline (cheap, actor-serialized on BLETransport). Only a complete
+            // message is dispatched; partial fragments return here and wait for more.
+            let transport = BLETransport.shared
+            switch await transport.receive(data) {
+            case .complete(let unpackedData):
+                guard await lifecycleTasks.active() else { return }
+                let accepted = await incomingRPCQueue.enqueue(IncomingRPCRequest(
+                    data: unpackedData,
+                    centralID: central,
+                    characteristicID: characteristicUUID
+                ))
 
-                // Unpack BLETransport packet if needed (could be fragmented)
-                let transport = BLETransport.shared
-
-                // Try to receive the data - this handles unpacking if it's a BLETransport packet
-                // If it's not a packet (raw data), receive() returns it unchanged
-                guard let unpackedData = await transport.receive(data) else {
-                    BleuLogger.actorSystem.warning("Failed to reassemble packet - may need more fragments")
-                    return
+                if !accepted {
+                    await recordDiagnostic(
+                        severity: .error,
+                        kind: .incomingRPCQueueFull,
+                        message: "Incoming RPC queue is full; dropping request",
+                        centralID: central,
+                        characteristicID: characteristicUUID
+                    )
                 }
 
-                let invocationEnvelope = try JSONDecoder().decode(InvocationEnvelope.self, from: unpackedData)
-                let responseEnvelope = await handleIncomingRPC(invocationEnvelope)
-                let responseData = try JSONEncoder().encode(responseEnvelope)
+            case .partial:
+                return
 
-                // Pack response with BLETransport for transmission to this specific central
-                let packets = await transport.fragment(responseData, for: central)
-                for packet in packets {
-                    let packedData = await transport.packPacket(packet)
-                    // Send response back via notification to the specific central
-                    _ = try await peripheralManager.updateValue(packedData, for: characteristicUUID, to: [central])
-                }
-            } catch {
-                BleuLogger.actorSystem.error("Failed to handle write request: \(error)")
+            case .rejected(let reason):
+                await recordDiagnostic(
+                    severity: .warning,
+                    kind: .transportPacketRejected,
+                    message: "Rejected incoming RPC packet: \(reason)",
+                    centralID: central,
+                    characteristicID: characteristicUUID
+                )
             }
 
         default:
             break
+        }
+    }
+
+    /// Decode, execute, and respond to a single incoming RPC invocation.
+    /// Runs off the event-listener loop (see `handlePeripheralEvent`).
+    private func processIncomingRPC(
+        _ unpackedData: Data,
+        from central: UUID,
+        characteristicUUID: UUID
+    ) async {
+        let invocationEnvelope: InvocationEnvelope
+        do {
+            invocationEnvelope = try JSONDecoder().decode(InvocationEnvelope.self, from: unpackedData)
+        } catch {
+            BleuLogger.actorSystem.error("Failed to decode incoming RPC invocation: \(error)")
+            await recordDiagnostic(
+                severity: .error,
+                kind: .incomingInvocationDecodeFailed,
+                message: "Failed to decode incoming RPC invocation",
+                centralID: central,
+                characteristicID: characteristicUUID,
+                error: error
+            )
+            return
+        }
+
+        let responseEnvelope = await handleIncomingRPC(invocationEnvelope)
+        let responseData: Data
+        do {
+            responseData = try JSONEncoder().encode(responseEnvelope)
+        } catch {
+            BleuLogger.actorSystem.error("Failed to encode incoming RPC response: \(error)")
+            await recordDiagnostic(
+                severity: .error,
+                kind: .incomingRPCResponseEncodeFailed,
+                message: "Failed to encode incoming RPC response",
+                centralID: central,
+                characteristicID: characteristicUUID,
+                callID: invocationEnvelope.callID,
+                error: error
+            )
+            return
+        }
+
+        do {
+            let transport = BLETransport.shared
+            let packets = try await transport.fragment(responseData, for: central)
+            for packet in packets {
+                let packedData = await transport.packPacket(packet)
+                let sent = try await peripheralManager.updateValue(
+                    packedData,
+                    for: characteristicUUID,
+                    to: [central]
+                )
+                guard sent else {
+                    throw BleuError.rpcFailed("Peripheral manager reported an unsent RPC response")
+                }
+            }
+        } catch {
+            BleuLogger.actorSystem.error("Failed to send incoming RPC response: \(error)")
+            await recordDiagnostic(
+                severity: .error,
+                kind: .incomingRPCResponseSendFailed,
+                message: "Failed to send incoming RPC response",
+                centralID: central,
+                characteristicID: characteristicUUID,
+                callID: invocationEnvelope.callID,
+                error: error
+            )
         }
     }
 
@@ -563,7 +796,8 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
     ///   - centralManager: Central manager to check state
     ///   - timeout: Maximum time to wait
     /// - Throws: BleuError if Bluetooth state prevents initialization
-    private static func waitForReady(
+    /// - Note: `internal` so test factories (e.g. `mock()`) can reuse this instead of duplicating it.
+    internal static func waitForReady(
         system: BLEActorSystem,
         peripheralManager: BLEPeripheralManagerProtocol,
         centralManager: BLECentralManagerProtocol,
@@ -712,7 +946,14 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
                 case .success(let data):
                     capturedResult = .success(try JSONDecoder().decode(Res.self, from: data))
                 case .void:
-                    capturedResult = .success(() as! Res)
+                    // Void-returning methods resolve through remoteCallVoid, which sets
+                    // Res == VoidResult. `() as! VoidResult` would trap, so construct the
+                    // expected result type explicitly (mirrors the cross-process path).
+                    if Res.self == VoidResult.self {
+                        capturedResult = .success(VoidResult() as! Res)
+                    } else {
+                        capturedResult = .success(() as! Res)
+                    }
                 case .failure(let error):
                     capturedResult = .failure(error)
                 }
@@ -767,7 +1008,9 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         // 3. Serialize envelope to data
         let envelopeData = try JSONEncoder().encode(envelope)
 
-        // 4. Send via BLE and wait for response with timeout
+        // 4. Send via BLE and wait for response with the configured RPC timeout
+        let rpcTimeout = await BleuConfigurationManager.shared.current().rpcTimeout
+        let timeoutNanoseconds = UInt64(rpcTimeout * 1_000_000_000)
         let responseData: Data
         responseData = try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
@@ -779,9 +1022,9 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
 
                     await self.proxyManager.storePendingCall(
                         envelope.callID,
-                        for: actor.id,
+                        for: proxy.id,
                         continuation: continuation,
-                        timeoutNanoseconds: 10_000_000_000
+                        timeoutNanoseconds: timeoutNanoseconds
                     )
 
                     do {
@@ -856,7 +1099,7 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         )
     }
     
-    /// Handle an incoming RPC invocation (called by LocalPeripheralActor)
+    /// Handle an incoming RPC invocation (decoded from a peripheral write request)
     public func handleIncomingRPC(_ envelope: InvocationEnvelope) async -> ResponseEnvelope {
         do {
 
@@ -923,7 +1166,7 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         }
 
         // Get service metadata from the actor type
-        let metadata = ServiceMapper.createServiceMetadata(from: T.self)
+        let metadata = ServiceMapper.createServiceMetadata(from: T.self, actorID: peripheral.id)
 
         // Add service to peripheral manager
         try await peripheralManager.add(metadata)
@@ -970,29 +1213,57 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         }
 
         let serviceUUID = UUID.serviceUUID(for: type)
+        let connectionTimeout = await BleuConfigurationManager.shared.current().connectionTimeout
         var discoveredActors: [T] = []
+        var discoveredActorIDs = Set<UUID>()
+        var discoveredPeripheralIDs = Set<UUID>()
 
         for await discovered in await centralManager.scanForPeripherals(
             withServices: [serviceUUID],
             timeout: timeout
         ) {
+            guard !discoveredPeripheralIDs.contains(discovered.id) else {
+                continue
+            }
+            discoveredPeripheralIDs.insert(discovered.id)
+
+            var actorID = discovered.advertisementData.advertisedActorID(for: serviceUUID) ?? discovered.id
+            guard !discoveredActorIDs.contains(actorID) else {
+                continue
+            }
+
             do {
                 // Connect to the peripheral first
-                try await centralManager.connect(to: discovered.id, timeout: 10.0)
+                try await centralManager.connect(to: discovered.id, timeout: connectionTimeout)
 
                 // Update BLETransport MTU based on connected peripheral
                 await updateTransportMTU(for: discovered.id)
 
+                actorID = await resolveRemoteActorID(
+                    from: discovered,
+                    as: type,
+                    serviceUUID: serviceUUID
+                )
+                guard !discoveredActorIDs.contains(actorID) else {
+                    try await centralManager.disconnect(from: discovered.id)
+                    continue
+                }
+
                 // Setup proxy for remote peripheral (now throws errors)
-                try await setupRemoteProxy(id: discovered.id, type: type)
+                try await setupRemoteProxy(
+                    peripheralID: discovered.id,
+                    actorID: actorID,
+                    type: type
+                )
 
                 // Create remote actor reference
-                let actor = try T.resolve(id: discovered.id, using: self)
+                let actor = try T.resolve(id: actorID, using: self)
 
                 // Add to results
+                discoveredActorIDs.insert(actorID)
                 discoveredActors.append(actor)
 
-                BleuLogger.actorSystem.info("Successfully discovered and connected to \(discovered.id)")
+                BleuLogger.actorSystem.info("Successfully discovered and connected to \(actorID)")
 
             } catch let error as BleuError {
                 // Structured error logging for known error types
@@ -1012,7 +1283,7 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
                 }
 
                 // Cleanup: remove any partial state and disconnect
-                await cleanupPeripheralState(discovered.id)
+                await cleanupPeripheralState(actorID: actorID, peripheralID: discovered.id)
                 do {
                     try await centralManager.disconnect(from: discovered.id)
                 } catch {
@@ -1027,7 +1298,7 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
                 BleuLogger.actorSystem.error("Unexpected error setting up \(discovered.id): \(error)")
 
                 // Cleanup: remove any partial state and disconnect
-                await cleanupPeripheralState(discovered.id)
+                await cleanupPeripheralState(actorID: actorID, peripheralID: discovered.id)
                 do {
                     try await centralManager.disconnect(from: discovered.id)
                 } catch {
@@ -1048,13 +1319,18 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         as type: T.Type
     ) async throws -> T {
         // Connect if not already connected
-        try await centralManager.connect(to: peripheralID, timeout: 10.0)
+        let connectionTimeout = await BleuConfigurationManager.shared.current().connectionTimeout
+        try await centralManager.connect(to: peripheralID, timeout: connectionTimeout)
 
         // Update BLETransport MTU based on connected peripheral
         await updateTransportMTU(for: peripheralID)
 
         // Setup proxy for remote peripheral (now throws)
-        try await setupRemoteProxy(id: peripheralID, type: type)
+        try await setupRemoteProxy(
+            peripheralID: peripheralID,
+            actorID: peripheralID,
+            type: type
+        )
 
         // Create remote actor reference
         let actor = try T.resolve(id: peripheralID, using: self)
@@ -1064,11 +1340,13 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
     
     /// Disconnect from a peripheral
     public func disconnect(from peripheralID: UUID) async throws {
+        let physicalPeripheralID = await proxyManager.get(peripheralID)?.id ?? peripheralID
+
         // Cleanup proxy and subscriptions before disconnecting
-        await cleanupPeripheralState(peripheralID)
+        await cleanupPeripheralState(actorID: peripheralID, peripheralID: physicalPeripheralID)
 
         defer { resignID(peripheralID) }
-        try await centralManager.disconnect(from: peripheralID)
+        try await centralManager.disconnect(from: physicalPeripheralID)
     }
     
     /// Check if connected to a peripheral
@@ -1078,18 +1356,40 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
     
     // MARK: - Private Helpers
 
+    private func recordDiagnostic(
+        severity: BleuDiagnosticSeverity,
+        kind: BleuDiagnosticKind,
+        message: String,
+        peripheralID: UUID? = nil,
+        centralID: UUID? = nil,
+        characteristicID: UUID? = nil,
+        callID: String? = nil,
+        error: Error? = nil
+    ) async {
+        await diagnostics.record(BleuDiagnosticEvent(
+            severity: severity,
+            kind: kind,
+            message: message,
+            peripheralID: peripheralID,
+            centralID: centralID,
+            characteristicID: characteristicID,
+            callID: callID,
+            underlyingError: error.map { String(reflecting: $0) }
+        ))
+    }
+
     /// Cleanup all state associated with a peripheral
     /// - Parameter peripheralID: The UUID of the peripheral to cleanup
     /// - Note: This method is idempotent and safe to call multiple times
-    private func cleanupPeripheralState(_ peripheralID: UUID) async {
+    private func cleanupPeripheralState(actorID: UUID, peripheralID: UUID) async {
         // Remove proxy from ProxyManager
-        await proxyManager.remove(peripheralID)
+        await proxyManager.remove(actorID)
 
         // Remove MTU entry from BLETransport
         let transport = BLETransport.shared
         await transport.removeMTU(for: peripheralID)
 
-        BleuLogger.actorSystem.debug("Cleaned up state for peripheral \(peripheralID)")
+        BleuLogger.actorSystem.debug("Cleaned up state for actor \(actorID)")
     }
 
     /// Update BLETransport MTU based on connected peripheral
@@ -1101,14 +1401,57 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
             await transport.updateMaxPayloadSize(for: peripheralID, maxWriteLength: maxWriteLength)
         }
     }
+
+    private func resolveRemoteActorID<T: PeripheralActor>(
+        from discovered: DiscoveredPeripheral,
+        as type: T.Type,
+        serviceUUID: UUID
+    ) async -> UUID {
+        if let advertisedActorID = discovered.advertisementData.advertisedActorID(for: serviceUUID) {
+            return advertisedActorID
+        }
+
+        do {
+            let actorIDCharacteristicUUID = UUID.characteristicUUID(for: "__actor_id__", in: type)
+            let services = try await centralManager.discoverServices(
+                for: discovered.id,
+                serviceUUIDs: [serviceUUID]
+            )
+            guard !services.isEmpty else {
+                return discovered.id
+            }
+
+            let characteristics = try await centralManager.discoverCharacteristics(
+                for: serviceUUID,
+                in: discovered.id,
+                characteristicUUIDs: [actorIDCharacteristicUUID]
+            )
+            guard !characteristics.isEmpty else {
+                return discovered.id
+            }
+
+            let data = try await centralManager.readValue(
+                for: actorIDCharacteristicUUID,
+                in: discovered.id
+            )
+            return UUID(data: data) ?? discovered.id
+        } catch {
+            BleuLogger.actorSystem.warning("Failed to resolve remote actor ID for \(discovered.id): \(error)")
+            return discovered.id
+        }
+    }
     
     /// Setup a proxy for a remote peripheral
-    /// - Precondition: The peripheral MUST be connected via LocalCentralActor
+    /// - Precondition: The peripheral MUST be connected via the central manager
     /// - Throws: BleuError if setup fails
     /// - Note: This method is transactional - either all setup succeeds or nothing is registered
-    private func setupRemoteProxy<T: PeripheralActor>(id: UUID, type: T.Type) async throws {
+    private func setupRemoteProxy<T: PeripheralActor>(
+        peripheralID: UUID,
+        actorID: UUID,
+        type: T.Type
+    ) async throws {
         // Check if proxy already exists to prevent duplicates (idempotent)
-        if await proxyManager.get(id) != nil {
+        if await proxyManager.get(actorID) != nil {
             return
         }
 
@@ -1120,7 +1463,7 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
 
         // Discover the actor's service
         let services = try await centralManager.discoverServices(
-            for: id,
+            for: peripheralID,
             serviceUUIDs: [serviceUUID]
         )
 
@@ -1131,7 +1474,7 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
         // Discover characteristics for the service
         let characteristics = try await centralManager.discoverCharacteristics(
             for: serviceUUID,
-            in: id,
+            in: peripheralID,
             characteristicUUIDs: [rpcCharUUID]
         )
 
@@ -1141,7 +1484,7 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
 
         // Phase 2: Enable notifications BEFORE registering (critical - must succeed first)
         do {
-            try await centralManager.setNotifyValue(true, for: rpcCharUUID, in: id)
+            try await centralManager.setNotifyValue(true, for: rpcCharUUID, in: peripheralID)
         } catch {
             // If notification setup fails, throw immediately (nothing registered yet)
             throw error
@@ -1151,14 +1494,14 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
 
         // Create a proxy for the remote peripheral with RPC characteristic
         let proxy = PeripheralActorProxy(
-            id: id,
+            id: peripheralID,
             centralManager: centralManager,
             rpcCharUUID: rpcCharUUID
         )
 
-        await proxyManager.set(id, proxy: proxy)
+        await proxyManager.set(actorID, proxy: proxy)
 
-        BleuLogger.actorSystem.debug("Successfully setup remote proxy for \(id)")
+        BleuLogger.actorSystem.debug("Successfully setup remote proxy for \(actorID)")
     }
 
     // MARK: - Error Conversion
@@ -1230,6 +1573,8 @@ public final class BLEActorSystem: DistributedActorSystem, Sendable {
             return .transportFailed("Operation not supported")
         case .operationInProgress(let operation):
             return .transportFailed("Operation already in progress: \(operation)")
+        case .fragmentationFailed(let message):
+            return .transportFailed("Fragmentation failed: \(message)")
         }
     }
 }

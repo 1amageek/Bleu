@@ -787,20 +787,26 @@ public actor MockCentralManager: BLECentralManagerProtocol {
     /// Simulate ATT error for testing error handling
     /// This simulates a characteristic value update with an error
     public func simulateATTError(for peripheralID: UUID) async {
+        let characteristicID =
+            notifyingCharacteristics[peripheralID]?.first
+            ?? peripheralCharacteristics[peripheralID]?.values
+                .flatMap { $0 }
+                .first { $0.properties.contains(.notify) }?
+                .uuid
+            ?? UUID()
+
         let error = NSError(
             domain: CBATTErrorDomain,
             code: CBATTError.invalidHandle.rawValue,
             userInfo: [NSLocalizedDescriptionKey: "Simulated ATT error for testing"]
         )
 
-        // Send characteristic value update with error
-        // Use a dummy UUID since we're simulating an error scenario
         await eventChannel.send(.characteristicValueUpdated(
             peripheralID,
-            UUID(),  // service UUID (not important for error case)
-            UUID(),  // characteristic UUID (not important for error case)
-            nil,     // no data on error
-            error    // the ATT error
+            UUID(),
+            characteristicID,
+            nil,
+            error
         ))
     }
 }

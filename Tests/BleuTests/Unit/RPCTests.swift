@@ -12,13 +12,12 @@ struct RPCTests {
     func testInvocationEnvelope() throws {
         let actorID = UUID()
         let arguments = [Data([1, 2, 3])]
-        let argumentsData = try JSONEncoder().encode(arguments)
 
         let envelope = InvocationEnvelope(
             recipientID: actorID.uuidString,
             senderID: nil,
             target: "testMethod",
-            arguments: argumentsData
+            arguments: arguments
         )
 
         #expect(envelope.recipientID == actorID.uuidString)
@@ -97,5 +96,38 @@ struct RPCTests {
         #expect(result2 == 8)
 
         // Actor is automatically unregistered when it deinitializes
+    }
+
+    @Test("Same-process void RPC does not crash")
+    func testSameProcessVoidRPC() async throws {
+        // Regression test: a void-returning distributed method invoked through the
+        // registry-backed same-process path used to trap on `() as! VoidResult`.
+        let system = await BLEActorSystem.mock()
+
+        distributed actor VoidActor: PeripheralActor {
+            typealias ActorSystem = BLEActorSystem
+
+            private var value: Int = 0
+
+            distributed func setValue(_ newValue: Int) async {
+                value = newValue
+            }
+
+            distributed func getValue() async -> Int {
+                value
+            }
+        }
+
+        let local = VoidActor(actorSystem: system)
+
+        // Resolve a proxy with the same ID in the same system to force the
+        // registry-backed same-process remoteCall path (not direct local dispatch).
+        let proxy = try VoidActor.resolve(id: local.id, using: system)
+
+        // Must not trap on the `.void` result branch.
+        try await proxy.setValue(42)
+
+        let stored = try await proxy.getValue()
+        #expect(stored == 42)
     }
 }

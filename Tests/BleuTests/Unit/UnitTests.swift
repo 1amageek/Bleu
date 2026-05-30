@@ -8,7 +8,7 @@ import Foundation
 struct BLETransportTests {
     
     @Test("Fragment and reassemble data")
-    func testFragmentation() async {
+    func testFragmentation() async throws {
         let transport = BLETransport.shared
         let testData = Data(repeating: 0xAB, count: 500)
         let deviceID = UUID()
@@ -17,7 +17,7 @@ struct BLETransportTests {
         await transport.updateMaxPayloadSize(for: deviceID, maxWriteLength: 512)
 
         // Fragment data for a specific device
-        let packets = await transport.fragment(testData, for: deviceID)
+        let packets = try await transport.fragment(testData, for: deviceID)
         #expect(packets.count > 1)
 
         // Reassemble packets using packPacket for proper binary format
@@ -26,7 +26,7 @@ struct BLETransportTests {
             // Use the transport's pack method to create proper binary format
             let packetData = await transport.packPacket(packet)
 
-            if let complete = await transport.receive(packetData) {
+            if case .complete(let complete) = await transport.receive(packetData) {
                 reassembledData = complete
             }
         }
@@ -35,7 +35,7 @@ struct BLETransportTests {
     }
     
     @Test("Small data should not fragment with sufficient MTU")
-    func testNoFragmentation() async {
+    func testNoFragmentation() async throws {
         let transport = BLETransport.shared
         let smallData = Data([0x01, 0x02, 0x03])
         let deviceID = UUID()
@@ -43,7 +43,7 @@ struct BLETransportTests {
         // Set a large enough MTU for the test device (default 20 is too small with 24-byte header)
         await transport.updateMaxPayloadSize(for: deviceID, maxWriteLength: 512)
 
-        let packets = await transport.fragment(smallData, for: deviceID)
+        let packets = try await transport.fragment(smallData, for: deviceID)
         #expect(packets.count == 1)
 
         if let packet = packets.first {

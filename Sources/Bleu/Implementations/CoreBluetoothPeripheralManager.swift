@@ -19,7 +19,6 @@ public actor CoreBluetoothPeripheralManager: BLEPeripheralManagerProtocol {
     private var characteristics: [UUID: CBMutableCharacteristic] = [:]
     private var subscribedCentrals: [UUID: Set<CBCentral>] = [:]
     private var subscribedCentralIDs: [UUID: Set<UUID>] = [:]  // Track central UUIDs for API compatibility
-    private var rpcCharacteristics: Set<UUID> = []  // Track RPC characteristics
 
     // Continuations for async operations
     private var stateContinuations: [CheckedContinuation<CBManagerState, Never>] = []
@@ -91,20 +90,12 @@ public actor CoreBluetoothPeripheralManager: BLEPeripheralManagerProtocol {
             let characteristic = CBMutableCharacteristic(
                 type: CBUUID(nsuuid: charMetadata.uuid),
                 properties: charMetadata.properties.cbProperties,
-                value: nil,
+                value: charMetadata.value,
                 permissions: charMetadata.permissions.cbPermissions
             )
 
             characteristics[charMetadata.uuid] = characteristic
             cbCharacteristics.append(characteristic)
-
-            // RPC characteristic detection:
-            // Convention: A characteristic is considered RPC-capable if it has both
-            // .notify (for sending responses) and .write (for receiving invocations)
-            // This allows bidirectional communication required for RPC pattern
-            if charMetadata.properties.contains([.notify, .write]) {
-                rpcCharacteristics.insert(charMetadata.uuid)
-            }
         }
 
         cbService.characteristics = cbCharacteristics
@@ -310,45 +301,22 @@ extension CoreBluetoothPeripheralManager {
     func handleWriteRequests(
         _ extractedRequests: [(centralID: UUID, serviceUUID: String?, characteristicUUID: String, value: Data?, offset: Int)]
     ) async {
-        // Process the extracted requests
+        // Forward each write as a raw event. Packet reassembly (BLETransport) and
+        // RPC dispatch are performed centrally in BLEActorSystem, giving a single
+        // reassembly point shared with the central/notification receive path.
+        // This keeps the production peripheral path identical to the mock path.
         for (centralID, serviceUUID, characteristicUUID, value, _) in extractedRequests {
             guard let charUUID = UUID(uuidString: characteristicUUID) else { continue }
             let svcUUID = serviceUUID.flatMap(UUID.init(uuidString:)) ?? UUID()
+            guard let value = value else { continue }
 
-            // Send event
-            if let value = value {
-                // Check if this is an RPC characteristic
-                if rpcCharacteristics.contains(charUUID) {
-                    // Use BLETransport to reassemble fragmented messages
-                    let transport = BLETransport.shared
-                    if let completeData = await transport.receive(value) {
-                        // We have a complete message, process it
-                        await handleRPCInvocation(data: completeData, characteristicUUID: charUUID, centralID: centralID)
-                    }
-                    // If nil, packet is part of a larger message, wait for more
-                } else {
-                    // Regular characteristic write
-                    await eventChannel.send(.writeRequestReceived(
-                        centralID,  // Real central identifier from CBCentral
-                        svcUUID,
-                        charUUID,
-                        value
-                    ))
-                }
-            }
+            await eventChannel.send(.writeRequestReceived(
+                centralID,  // Real central identifier from CBCentral
+                svcUUID,
+                charUUID,
+                value
+            ))
         }
-    }
-
-    private func handleRPCInvocation(data: Data, characteristicUUID: UUID, centralID: UUID) async {
-        // Emit write event to EventBridge for RPC processing
-        // EventBridge has the correct BLEActorSystem instance registered via setRPCRequestHandler()
-        // This maintains proper separation of concerns and instance isolation
-        await eventChannel.send(.writeRequestReceived(
-            centralID,           // Real central identifier from CBCentral
-            UUID(),              // service UUID (would need to be tracked separately)
-            characteristicUUID,
-            data                 // Complete RPC data (already reassembled from fragments by BLETransport)
-        ))
     }
 
     func handleSubscription(
@@ -406,8 +374,8 @@ extension CoreBluetoothPeripheralManager {
 // MARK: - Delegate Proxy
 
 /// Delegate proxy for CBPeripheralManager to forward callbacks to CoreBluetoothPeripheralManager
-fileprivate final class CoreBluetoothPeripheralManagerDelegateProxy: NSObject, CBPeripheralManagerDelegate, @unchecked Sendable {
-    weak var actor: CoreBluetoothPeripheralManager?
+fileprivate final class CoreBluetoothPeripheralManagerDelegateProxy: NSObject, CBPeripheralManagerDelegate {
+    nonisolated(unsafe) weak var actor: CoreBluetoothPeripheralManager?
 
     init(actor: CoreBluetoothPeripheralManager) {
         self.actor = actor

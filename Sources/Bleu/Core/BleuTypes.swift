@@ -96,17 +96,20 @@ public struct CharacteristicMetadata: Sendable, Codable {
     public let properties: CharacteristicProperties
     public let permissions: CharacteristicPermissions
     public let descriptors: [DescriptorMetadata]
+    public let value: Data?
     
     public init(
         uuid: UUID,
         properties: CharacteristicProperties,
         permissions: CharacteristicPermissions,
-        descriptors: [DescriptorMetadata] = []
+        descriptors: [DescriptorMetadata] = [],
+        value: Data? = nil
     ) {
         self.uuid = uuid
         self.properties = properties
         self.permissions = permissions
         self.descriptors = descriptors
+        self.value = value
     }
 }
 
@@ -203,27 +206,6 @@ public enum BLEEvent: Sendable {
     case advertisingStarted(Error?)
 }
 
-/// Connection options
-public struct ConnectionOptions: Sendable, Codable {
-    public let autoReconnect: Bool
-    public let connectionTimeout: TimeInterval
-    public let maxRetries: Int
-    public let retryDelay: TimeInterval
-    
-    public init(
-        autoReconnect: Bool = true,
-        connectionTimeout: TimeInterval = 10.0,
-        maxRetries: Int = 3,
-        retryDelay: TimeInterval = 1.0
-    ) {
-        self.autoReconnect = autoReconnect
-        self.connectionTimeout = connectionTimeout
-        self.maxRetries = maxRetries
-        self.retryDelay = retryDelay
-    }
-}
-
 // MARK: - Invocation Envelopes
 // Note: InvocationEnvelope and ResponseEnvelope are now provided by ActorRuntime
 // Import ActorRuntime to use these types
-
