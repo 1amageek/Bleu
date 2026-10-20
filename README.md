@@ -94,11 +94,10 @@ distributed actor MyThermometer: TemperatureSensor {
     }
 }
 
-// 3. Central: Resolve and call methods over BLE
-let actorSystem = BLEActorSystem(
-    peripheralManager: CoreBluetoothPeripheralManager(),
-    centralManager: CoreBluetoothCentralManager()
-)
+// 3. Central: Resolve and call methods over BLE.
+//    `create()` builds the CoreBluetooth managers, awaits their initialize(),
+//    and waits until Bluetooth is powered on and the system is ready.
+let actorSystem = try await BLEActorSystem.create()
 
 // Discover the sensor
 let sensors = try await actorSystem.discover(MyThermometer.self, timeout: 10.0)
@@ -109,6 +108,12 @@ let sensor = try $TemperatureSensor.resolve(id: sensors[0].id, using: actorSyste
 // Call methods as if the sensor were local
 let temp = try await sensor.getTemperature()  // 🎉 That's it!
 ```
+
+> **Note:** `BLEActorSystem.create()` is the recommended entry point. To inject
+> managers yourself (for example with mock implementations), build the system
+> with `BLEActorSystem(peripheralManager:centralManager:)` and `await` each
+> manager's `initialize()` first - the system only becomes `ready` once both
+> managers report `.poweredOn`.
 
 ### Traditional Approach: Concrete Actor Types
 
@@ -136,13 +141,8 @@ distributed actor TemperatureSensor: PeripheralActor {
 #### Peripheral Side
 
 ```swift
-// Create BLE actor system with CoreBluetooth managers
-let peripheralManager = CoreBluetoothPeripheralManager()
-let centralManager = CoreBluetoothCentralManager()
-let actorSystem = BLEActorSystem(
-    peripheralManager: peripheralManager,
-    centralManager: centralManager
-)
+// Create the BLE actor system and wait until Bluetooth is ready
+let actorSystem = try await BLEActorSystem.create()
 
 // Create and advertise the sensor
 let sensor = TemperatureSensor(actorSystem: actorSystem)
@@ -154,13 +154,8 @@ try await actorSystem.startAdvertising(sensor)
 #### Central Side
 
 ```swift
-// Create BLE actor system with CoreBluetooth managers
-let peripheralManager = CoreBluetoothPeripheralManager()
-let centralManager = CoreBluetoothCentralManager()
-let actorSystem = BLEActorSystem(
-    peripheralManager: peripheralManager,
-    centralManager: centralManager
-)
+// Create the BLE actor system and wait until Bluetooth is ready
+let actorSystem = try await BLEActorSystem.create()
 
 // Discover and connect to sensors
 let sensors = try await actorSystem.discover(TemperatureSensor.self, timeout: 10.0)
@@ -217,10 +212,7 @@ distributed actor IndoorSensor: TemperatureSensor {
 }
 
 // Step 3: Central side - Work with the protocol, not the concrete type
-let actorSystem = BLEActorSystem(
-    peripheralManager: CoreBluetoothPeripheralManager(),
-    centralManager: CoreBluetoothCentralManager()
-)
+let actorSystem = try await BLEActorSystem.create()
 
 // Option 1: Discover sensors using concrete type
 let sensors = try await actorSystem.discover(IndoorSensor.self, timeout: 10.0)
@@ -284,31 +276,23 @@ func readAllSensors(_ sensors: [any EnvironmentSensor]) async throws -> [Double]
 - **Type Safety**: Full compiler verification of distributed method calls
 - **Flexible Resolution**: Resolve actors by ID without discovery process
 
-### Custom Service Metadata
+### Service and Characteristic UUIDs
 
 ```swift
 distributed actor SmartLight: PeripheralActor {
     typealias ActorSystem = BLEActorSystem
-    
-    // Custom service configuration
-    static var serviceMetadata: ServiceMetadata {
-        ServiceMetadata(
-            uuid: UUID(uuidString: "12345678-1234-5678-9ABC-123456789ABC")!,
-            characteristics: [
-                CharacteristicMetadata(
-                    uuid: UUID(uuidString: "87654321-4321-8765-CBA9-987654321CBA")!,
-                    properties: [.read, .write, .notify],
-                    permissions: [.readable, .writeable]
-                )
-            ]
-        )
-    }
-    
+
+    // Bleu derives the BLE service and characteristic UUIDs from the actor type,
+    // so the peripheral advertises exactly the surface `discover()` looks for and
+    // no custom service metadata is needed.
+
     distributed func setBrightness(_ level: Int) async throws {
         // Control light brightness
     }
     
-    distributed func setColor(_ rgb: (r: Int, g: Int, b: Int)) async throws {
+    // Distributed parameters and return values must be Codable, so model colors
+    // as scalars or a Codable struct - tuples are not Codable.
+    distributed func setColor(red: Int, green: Int, blue: Int) async throws {
         // Set RGB color
     }
 }
@@ -316,28 +300,50 @@ distributed actor SmartLight: PeripheralActor {
 
 ### Notifications and Subscriptions
 
+Distributed methods cross the BLE boundary as `Codable` values, so they cannot
+return an `AsyncStream`: the stream is not `Codable` and cannot be serialized.
+Expose the latest notification value instead and poll it from the central side.
+
 ```swift
-distributed actor HeartRateMonitor: PeripheralActor {
+@Resolvable
+protocol HeartRateMonitor: PeripheralActor {
+    distributed func enableNotifications() async throws
+    distributed func disableNotifications() async throws
+    distributed func getLatestHeartRate() async throws -> Int?
+}
+
+distributed actor HeartSensor: HeartRateMonitor {
     typealias ActorSystem = BLEActorSystem
-    
-    // Stream heart rate data
-    distributed func streamHeartRate() -> AsyncStream<Int> {
-        AsyncStream { continuation in
-            // Setup sensor monitoring
-            Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
-                let heartRate = Int.random(in: 60...100)
-                continuation.yield(heartRate)
-            }
-        }
+
+    private var latestHeartRate: Int?
+
+    distributed func enableNotifications() async throws {
+        // Start the underlying sensor / notification source
+    }
+
+    distributed func disableNotifications() async throws {
+        // Stop it again
+    }
+
+    distributed func getLatestHeartRate() async throws -> Int? {
+        latestHeartRate
     }
 }
 
-// Client side - subscribe to updates
-let monitor = try await actorSystem.connect(to: deviceID, as: HeartRateMonitor.self)
-for await heartRate in await monitor.streamHeartRate() {
-    print("Heart rate: \(heartRate) BPM")
+// Central side - poll the notification value over BLE
+let monitors = try await actorSystem.discover(HeartSensor.self)
+guard let monitor = monitors.first else { return }
+try await monitor.enableNotifications()
+while !Task.isCancelled {
+    if let heartRate = try await monitor.getLatestHeartRate() {
+        print("Heart rate: \(heartRate) BPM")
+    }
+    try await Task.sleep(nanoseconds: 1_000_000_000)
 }
 ```
+
+`NotifyingPeripheral` in `Sources/Bleu/Actors/PeripheralActor.swift` codifies this
+"latest value" pattern for peripherals that push updates.
 
 ### Error Handling
 
