@@ -203,4 +203,37 @@ struct TransportLayerTests {
 
         #expect(result == .rejected(.notTransportPacket))
     }
+
+    // MARK: - Packet Count Limit Tests
+
+    @Test("Payload needing more than UInt16.max packets is rejected instead of trapping")
+    func testPacketCountOverflowIsRejected() async throws {
+        let transport = BLETransport.shared
+        let deviceID = UUID()
+
+        // A 28-byte MTU leaves a 1-byte payload per packet, so 65,536 bytes need
+        // 65,536 packets: one more than the 16-bit total/sequence fields can hold.
+        await transport.updateMaxPayloadSize(for: deviceID, maxWriteLength: 28)
+        let oversizedData = Data(count: Int(UInt16.max) + 1)
+
+        do {
+            _ = try await transport.fragment(oversizedData, for: deviceID)
+            Issue.record("Expected fragment() to throw for more than UInt16.max packets")
+        } catch let error as BleuError {
+            guard case .fragmentationFailed(let message) = error else {
+                Issue.record("Expected BleuError.fragmentationFailed, got \(error)")
+                return
+            }
+            #expect(message.contains("65535"), "Error should mention the 16-bit packet limit: \(message)")
+        } catch {
+            Issue.record("Expected BleuError.fragmentationFailed, got \(error)")
+        }
+
+        // The same device must still fragment normally once the payload fits the limit.
+        let acceptedData = Data(count: Int(UInt16.max))
+        let packets = try await transport.fragment(acceptedData, for: deviceID)
+        #expect(packets.count == Int(UInt16.max))
+        #expect(packets.last?.sequenceNumber == UInt16.max - 1)
+        #expect(packets.last?.totalPackets == UInt16.max)
+    }
 }

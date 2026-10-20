@@ -155,6 +155,10 @@ public actor BLETransport {
     ///   transport header. Clamping the payload to a positive size while the header alone
     ///   exceeds the MTU would silently emit packets larger than the link can carry, so we
     ///   fail explicitly instead (no silent fallback).
+    /// - Throws: `BleuError.fragmentationFailed` if the payload needs more packets than the
+    ///   16-bit sequence/total header fields can represent. The wire format cannot address
+    ///   those packets, so converting the count to `UInt16` would trap instead of surfacing
+    ///   a recoverable error.
     public func fragment(_ data: Data, for deviceID: UUID) throws -> [Packet] {
         guard !data.isEmpty else { return [] }
 
@@ -167,9 +171,17 @@ public actor BLETransport {
             )
         }
         let payloadSize = mtu - headerOverhead
-        let totalPackets = UInt16((data.count + payloadSize - 1) / payloadSize)
+        let packetCount = (data.count + payloadSize - 1) / payloadSize
+        guard packetCount <= Int(UInt16.max) else {
+            throw BleuError.fragmentationFailed(
+                "Payload of \(data.count) bytes needs \(packetCount) packets with a \(payloadSize)-byte packet payload, "
+                    + "which exceeds the \(UInt16.max)-packet transport limit"
+            )
+        }
+        let totalPackets = UInt16(packetCount)
 
         var packets: [Packet] = []
+        packets.reserveCapacity(packetCount)
 
         for i in 0..<totalPackets {
             let start = Int(i) * payloadSize

@@ -39,7 +39,7 @@ No complex BLE APIs. No manual serialization. No boilerplate code. Just define y
 - Actor isolation for thread safety
 
 ### 🚀 **High Performance**
-- Binary packet fragmentation with 24-byte headers
+- Binary packet fragmentation with 27-byte headers
 - Efficient data transport with checksums
 - Adaptive MTU negotiation
 - Automatic packet reassembly
@@ -390,10 +390,10 @@ do {
 Bleu uses an efficient binary packet format for BLE communication:
 
 ```
-┌──────────────┬─────────────┬──────────────┬──────────┐
-│  UUID (16B)  │  Seq (2B)   │  Total (2B)  │ CRC (4B) │ Payload
-└──────────────┴─────────────┴──────────────┴──────────┘
-        24-byte header
+┌────────────┬──────────────┬────────────┬───────────────┬────────────┬───────────────┐
+│ Magic (2B) │ Version (1B) │ UUID (16B) │ Sequence (2B) │ Total (2B) │ Checksum (4B) │ Payload
+└────────────┴──────────────┴────────────┴───────────────┴────────────┴───────────────┘
+        27-byte header (the legacy 24-byte v0 header is detected and rejected)
 ```
 
 ## 🧪 Testing
